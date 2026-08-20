@@ -20,7 +20,7 @@ jobs:
           cache: 'gradle'
 
       - name: Build with Gradle
-        run: ./gradlew clean build check
+        run: ./gradlew clean build check --stacktrace > build_output.txt 2>&1
 
       - name: Publish Test Results
         uses: actions/upload-artifact@v4
@@ -40,6 +40,14 @@ jobs:
           path: '**/build/reports/spotbugs/*.html'
           retention-days: 7
 
+      - name: Upload Build Output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-outputs
+          path: '*_output.txt'
+          retention-days: 7
+
   android:
     runs-on: ubuntu-latest
     steps:
@@ -53,7 +61,15 @@ jobs:
           cache: 'gradle'
 
       - name: Build Android App
-        run: ./gradlew :chat-mobile:assembleDebug :chat-mobile:testDebugUnitTest
+        run: ./gradlew :chat-mobile:assembleDebug :chat-mobile:testDebugUnitTest --stacktrace > android_output.txt 2>&1
+
+      - name: Upload Android Output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-outputs
+          path: '*_output.txt'
+          retention-days: 7
 
   integration:
     runs-on: ubuntu-latest
@@ -67,4 +83,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
+
 
