@@ -21,3 +21,4 @@ A decentralized End-to-End Encrypted Chat Application consisting of:
 - **Crypto:** AES-256-GCM for encryption, DH (Group 14) for key exchange, SHA256withRSA for signatures.
 - **No Payload Logging:** Keys, IVs, and message payloads must never be logged.
 
+
