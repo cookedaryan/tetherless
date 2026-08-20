@@ -12,15 +12,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Override gradle.properties for CI
+        run: |
+          echo "org.gradle.java.home=$JAVA_HOME" > gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+
       - name: Build with Gradle
-        run: ./gradlew clean build check --stacktrace > build_output.txt 2>&1
+        run: ./gradlew clean build check --stacktrace
 
       - name: Publish Test Results
         uses: actions/upload-artifact@v4
@@ -32,64 +38,34 @@ jobs:
             **/build/test-results/**/*.xml
           retention-days: 7
 
-      - name: Publish SpotBugs Reports
+      - name: Publish Build Reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: spotbugs-reports
-          path: '**/build/reports/spotbugs/*.html'
+          name: build-reports
+          path: '**/build/reports/'
           retention-days: 7
-
-      - name: Upload Build Output
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: build-outputs
-          path: '*_output.txt'
-          retention-days: 7
-
-      - name: Push Build Output
-        if: always()
-        run: |
-          git config --global user.name 'github-actions'
-          git config --global user.email 'github-actions@github.com'
-          git checkout -b debug-logs
-          git add build_output.txt
-          git commit -m 'upload build output'
-          cat build_output.txt | grep -i 'fail\|error\|exception\|cannot find' -B 2 -A 5 > errors.txt || true
-          echo '`' >> $GITHUB_STEP_SUMMARY
-          cat errors.txt >> $GITHUB_STEP_SUMMARY
-          echo '`' >> $GITHUB_STEP_SUMMARY
 
   android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Override gradle.properties for CI
+        run: |
+          echo "org.gradle.java.home=$JAVA_HOME" > gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+
       - name: Build Android App
-        run: ./gradlew :chat-mobile:assembleDebug :chat-mobile:testDebugUnitTest --stacktrace > android_output.txt 2>&1
-
-      - name: Upload Android Output
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: android-outputs
-          path: '*_output.txt'
-          retention-days: 7
-
-      - name: Upload Android Output to file.io
-        if: always()
-        run: cat android_output.txt | grep -i 'fail\|error\|exception\|cannot find' -B 2 -A 5 > android_errors.txt || true
-          echo '`' >> $GITHUB_STEP_SUMMARY
-          cat android_errors.txt >> $GITHUB_STEP_SUMMARY
-          echo '`' >> $GITHUB_STEP_SUMMARY
+        run: ./gradlew :chat-mobile:assembleDebug :chat-mobile:testDebugUnitTest --stacktrace
 
   integration:
     runs-on: ubuntu-latest
@@ -103,19 +79,3 @@ jobs:
       - uses: actions/checkout@v4
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

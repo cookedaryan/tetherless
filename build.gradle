@@ -27,7 +27,7 @@ subprojects { project ->
     project.pluginManager.withPlugin('java') {
         project.java {
             toolchain {
-                languageVersion = JavaLanguageVersion.of(21)
+                languageVersion = JavaLanguageVersion.of(17)
             }
         }
         project.apply plugin: 'com.github.spotbugs'
