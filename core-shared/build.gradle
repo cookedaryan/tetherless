@@ -3,6 +3,8 @@ plugins {
 }
 
 java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
     
     
 }
@@ -13,3 +15,4 @@ dependencies {
     testImplementation libs.assertj.core
     // Explicitly forbid any Android or JavaFX dependency here — this module must stay platform-neutral.
 }
+
