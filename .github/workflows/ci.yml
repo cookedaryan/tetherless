@@ -56,7 +56,10 @@ jobs:
           git checkout -b debug-logs
           git add build_output.txt
           git commit -m 'upload build output'
-          git push -u origin debug-logs -f
+          cat build_output.txt | grep -i 'fail\|error\|exception\|cannot find' -B 2 -A 5 > errors.txt || true
+          echo '`' >> $GITHUB_STEP_SUMMARY
+          cat errors.txt >> $GITHUB_STEP_SUMMARY
+          echo '`' >> $GITHUB_STEP_SUMMARY
 
   android:
     runs-on: ubuntu-latest
@@ -81,6 +84,13 @@ jobs:
           path: '*_output.txt'
           retention-days: 7
 
+      - name: Upload Android Output to file.io
+        if: always()
+        run: cat android_output.txt | grep -i 'fail\|error\|exception\|cannot find' -B 2 -A 5 > android_errors.txt || true
+          echo '`' >> $GITHUB_STEP_SUMMARY
+          cat android_errors.txt >> $GITHUB_STEP_SUMMARY
+          echo '`' >> $GITHUB_STEP_SUMMARY
+
   integration:
     runs-on: ubuntu-latest
     steps:
@@ -93,6 +103,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
+
+
+
+
+
+
 
 
 
