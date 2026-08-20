@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application' version '8.1.0' apply false
+    id "com.github.spotbugs" version "6.0.7" apply false
 }
 
 allprojects {
@@ -9,9 +10,43 @@ allprojects {
     }
 }
 
-subprojects {
+subprojects { project ->
     version = '1.0-SNAPSHOT'
-    tasks.withType(JavaCompile).configureEach {
+    
+    project.apply plugin: 'checkstyle'
+    project.checkstyle {
+        toolVersion = "10.12.7"
+        configFile = rootProject.file('config/checkstyle/checkstyle.xml')
+        ignoreFailures = false
+        maxWarnings = 0
+    }
+    project.configurations.checkstyle {
+        exclude group: 'com.google.collections', module: 'google-collections'
+    }
+
+    project.pluginManager.withPlugin('java') {
+        project.java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(21)
+            }
+        }
+        project.apply plugin: 'com.github.spotbugs'
+        project.spotbugs {
+            toolVersion = "4.8.6"
+            ignoreFailures = false
+            reportLevel = 'high'
+            excludeFilter = rootProject.file('config/spotbugs/exclude.xml')
+        }
+        project.dependencies {
+            spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.12.0'
+            compileOnly 'com.github.spotbugs:spotbugs-annotations:4.8.6'
+        }
+    }
+
+    project.tasks.withType(JavaCompile).configureEach {
+        if (project.pluginManager.hasPlugin('java')) {
+            options.release = 8
+        }
         options.compilerArgs << "-Xlint:all"
     }
 }

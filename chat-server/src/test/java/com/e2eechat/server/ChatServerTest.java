@@ -1,6 +1,6 @@
 package com.e2eechat.server;
 
-import com.e2eechat.core.models.Message;
+
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 

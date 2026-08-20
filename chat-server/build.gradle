@@ -3,6 +3,11 @@ plugins {
     id 'application'
 }
 
+java {
+    
+    
+}
+
 application {
     mainClass = 'com.e2eechat.server.Main'
 }

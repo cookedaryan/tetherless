@@ -3,7 +3,7 @@ package com.e2eechat.core.crypto;
 import javax.crypto.KeyAgreement;
 import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
+
 import java.security.AlgorithmParameterGenerator;
 import java.security.AlgorithmParameters;
 import java.security.KeyPair;
@@ -13,7 +13,7 @@ import java.security.PublicKey;
 import java.security.KeyFactory;
 import java.security.spec.X509EncodedKeySpec;
 import java.security.MessageDigest;
-import java.util.Arrays;
+
 
 public class DHUtils {
     public static KeyPair generateKeyPair() throws Exception {

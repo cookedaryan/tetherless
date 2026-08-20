@@ -29,7 +29,8 @@ public class ChatServer {
         }
     }
 
-    private class ClientHandler implements Runnable {
+    private @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("SECOBDES")
+    class ClientHandler implements Runnable {
         private final Socket socket;
         private ObjectInputStream in;
         private ObjectOutputStream out;

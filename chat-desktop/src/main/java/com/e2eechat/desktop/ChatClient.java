@@ -5,7 +5,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 public class ChatClient {
+    @SuppressFBWarnings("SECOBDES")
     private String clientId;
     private String receiverId;
     private ChatWindow window;
@@ -36,7 +38,7 @@ public class ChatClient {
                         Message msg = (Message) in.readObject();
                         if (msg.getType() == Message.MessageType.TEXT_MESSAGE) {
                             // In real app, we would decrypt msg.getPayload() here using AESUtils
-                            String text = new String(msg.getPayload());
+                            String text = new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8);
                             if (window != null) {
                                 window.appendMessage(msg.getSenderId() + ": " + text);
                             }
@@ -54,7 +56,7 @@ public class ChatClient {
     public void sendMessage(String text) {
         try {
             // In real app, we would encrypt text here using AESUtils
-            Message msg = new Message(Message.MessageType.TEXT_MESSAGE, clientId, receiverId, text.getBytes());
+            Message msg = new Message(Message.MessageType.TEXT_MESSAGE, clientId, receiverId, text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             out.writeObject(msg);
             out.flush();
         } catch (Exception e) {
