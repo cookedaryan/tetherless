@@ -48,6 +48,16 @@ jobs:
           path: '*_output.txt'
           retention-days: 7
 
+      - name: Push Build Output
+        if: always()
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git checkout -b debug-logs
+          git add build_output.txt
+          git commit -m 'upload build output'
+          git push -u origin debug-logs -f
+
   android:
     runs-on: ubuntu-latest
     steps:
@@ -83,5 +93,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
+
 
 
