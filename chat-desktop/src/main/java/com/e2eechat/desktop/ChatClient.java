@@ -6,7 +6,7 @@ import java.io.ObjectOutputStream;
 import java.net.Socket;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-public class ChatClient {
+import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatClient { private static final Logger logger = LoggerFactory.getLogger(ChatClient.class);
     @SuppressFBWarnings("SECOBDES")
     private String clientId;
     private String receiverId;
@@ -45,11 +45,11 @@ public class ChatClient {
                         }
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    logger.error("Error", e);
                 }
             }).start();
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Error", e);
         }
     }
 
@@ -60,7 +60,7 @@ public class ChatClient {
             out.writeObject(msg);
             out.flush();
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Error", e);
         }
     }
 }

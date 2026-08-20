@@ -32,7 +32,7 @@ public class ChatService extends Service {
                     }
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                android.util.Log.e("ChatService", "Error", e);
             }
         }).start();
         return START_STICKY;

@@ -11,21 +11,21 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class ChatServer {
+import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatServer { private static final Logger logger = LoggerFactory.getLogger(ChatServer.class);
     private static final int PORT = 8080;
     private final ConcurrentHashMap<String, ObjectOutputStream> clients = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("Relay Server started on port " + PORT);
+            logger.info("Relay Server started on port {}", PORT);
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
                 executorService.submit(new ClientHandler(clientSocket));
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Error", e);
         }
     }
 
@@ -52,7 +52,7 @@ public class ChatServer {
                     if (message.getType() == Message.MessageType.CONNECT) {
                         clientId = message.getSenderId();
                         clients.put(clientId, out);
-                        System.out.println("Client connected: " + clientId);
+                        logger.info("Client connected: {}", com.e2eechat.core.util.Redact.id(clientId));
                     } else if (message.getType() == Message.MessageType.DISCONNECT) {
                         break;
                     } else {
@@ -60,11 +60,11 @@ public class ChatServer {
                     }
                 }
             } catch (Exception e) {
-                System.out.println("Client disconnected or error: " + clientId);
+                logger.info("Client disconnected or error: {}", com.e2eechat.core.util.Redact.id(clientId));
             } finally {
                 if (clientId != null) {
                     clients.remove(clientId);
-                    System.out.println("Client disconnected: " + clientId);
+                    logger.info("Client disconnected: {}", com.e2eechat.core.util.Redact.id(clientId));
                 }
                 try { socket.close(); } catch (IOException e) {}
             }
@@ -76,9 +76,9 @@ public class ChatServer {
             if (receiverOut != null) {
                 receiverOut.writeObject(message);
                 receiverOut.flush();
-                System.out.println("Routed message from " + message.getSenderId() + " to " + receiverId);
+                
             } else {
-                System.out.println("Receiver not found: " + receiverId);
+                logger.warn("Receiver not found: {}", com.e2eechat.core.util.Redact.id(receiverId));
             }
         }
     }

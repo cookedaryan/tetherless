@@ -4,7 +4,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 
-public class DatabaseHelper {
+import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class DatabaseHelper { private static final Logger logger = LoggerFactory.getLogger(DatabaseHelper.class);
     private static final String DB_URL = "jdbc:sqlite:chat.db";
 
     public static void initializeDatabase() {
@@ -19,9 +19,9 @@ public class DatabaseHelper {
                     + " timestamp DATETIME DEFAULT CURRENT_TIMESTAMP\n"
                     + ");";
             stmt.execute(sql);
-            System.out.println("Database initialized.");
+            logger.info("Database initialized.");
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Database initialization failed", e);
         }
     }
 }

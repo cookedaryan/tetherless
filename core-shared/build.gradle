@@ -8,6 +8,7 @@ java {
 }
 
 dependencies {
+    implementation libs.slf4j.api
     testImplementation libs.junit
     testImplementation libs.assertj.core
     // Explicitly forbid any Android or JavaFX dependency here — this module must stay platform-neutral.
