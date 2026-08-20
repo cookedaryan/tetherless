@@ -1,12 +1,7 @@
 package com.e2eechat.core.models;
-
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-
-public class Message implements Serializable {
-    private static final long serialVersionUID = 2L;
-
+public class Message {
     private final MessageType type;
     private final String senderId;
     private final String receiverId;
@@ -16,7 +11,6 @@ public class Message implements Serializable {
     private final long timestamp;
     private final byte[] iv;
     private final int protocolVersion;
-
     Message(MessageType type, String senderId, String receiverId, byte[] payload, byte[] signature, String messageId, long timestamp, byte[] iv, int protocolVersion) {
         this.type = type;
         this.senderId = senderId;
@@ -28,7 +22,6 @@ public class Message implements Serializable {
         this.iv = iv;
         this.protocolVersion = protocolVersion;
     }
-
     public MessageType getType() { return type; }
     public String getSenderId() { return senderId; }
     public String getReceiverId() { return receiverId; }
@@ -38,7 +31,6 @@ public class Message implements Serializable {
     public long getTimestamp() { return timestamp; }
     public byte[] getIv() { return iv; }
     public int getProtocolVersion() { return protocolVersion; }
-
     public byte[] canonicalBytesForSigning() {
         byte[] typeBytes = type.name().getBytes(StandardCharsets.UTF_8);
         byte[] msgIdBytes = messageId != null ? messageId.getBytes(StandardCharsets.UTF_8) : new byte[0];
@@ -46,7 +38,6 @@ public class Message implements Serializable {
         byte[] receiverBytes = receiverId != null ? receiverId.getBytes(StandardCharsets.UTF_8) : new byte[0];
         byte[] ivBytes = iv != null ? iv : new byte[0];
         byte[] payloadBytes = payload != null ? payload : new byte[0];
-
         int length = 4 + typeBytes.length +
                      4 + msgIdBytes.length +
                      4 + senderBytes.length +

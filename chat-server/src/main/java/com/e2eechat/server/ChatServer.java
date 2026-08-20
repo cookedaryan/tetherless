@@ -3,8 +3,8 @@ package com.e2eechat.server;
 import com.e2eechat.core.models.Message;
 
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import com.e2eechat.core.protocol.FrameReader;
+import com.e2eechat.core.protocol.FrameWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,7 +13,7 @@ import java.util.concurrent.Executors;
 
 import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatServer { private static final Logger logger = LoggerFactory.getLogger(ChatServer.class);
     private static final int PORT = 8080;
-    private final ConcurrentHashMap<String, ObjectOutputStream> clients = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, FrameWriter> clients = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     public void start() {
@@ -29,11 +29,11 @@ import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatServer
         }
     }
 
-    private @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("SECOBDES")
+    private 
     class ClientHandler implements Runnable {
         private final Socket socket;
-        private ObjectInputStream in;
-        private ObjectOutputStream out;
+        private FrameReader in;
+        private FrameWriter out;
         private String clientId;
 
         public ClientHandler(Socket socket) {
@@ -43,11 +43,11 @@ import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatServer
         @Override
         public void run() {
             try {
-                out = new ObjectOutputStream(socket.getOutputStream());
-                in = new ObjectInputStream(socket.getInputStream());
+                out = new FrameWriter(socket.getOutputStream());
+                in = new FrameReader(socket.getInputStream());
 
                 while (true) {
-                    Message message = (Message) in.readObject();
+                    Message message = in.readMessage();
                     
                     if (message.getType() == com.e2eechat.core.models.MessageType.HELLO) {
                         clientId = message.getSenderId();
@@ -70,12 +70,12 @@ import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatServer
             }
         }
         
-        private void routeMessage(Message message) throws IOException {
+        private void routeMessage(Message message) throws IOException, com.e2eechat.core.protocol.ProtocolException {
             String receiverId = message.getReceiverId();
-            ObjectOutputStream receiverOut = clients.get(receiverId);
+            FrameWriter receiverOut = clients.get(receiverId);
             if (receiverOut != null) {
-                receiverOut.writeObject(message);
-                receiverOut.flush();
+                receiverOut.writeMessage(message);
+                
                 
             } else {
                 logger.warn("Receiver not found: {}", com.e2eechat.core.util.Redact.id(receiverId));
@@ -83,3 +83,4 @@ import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatServer
         }
     }
 }
+
