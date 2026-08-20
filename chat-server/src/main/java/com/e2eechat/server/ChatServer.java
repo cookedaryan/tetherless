@@ -49,11 +49,11 @@ import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatServer
                 while (true) {
                     Message message = (Message) in.readObject();
                     
-                    if (message.getType() == Message.MessageType.CONNECT) {
+                    if (message.getType() == com.e2eechat.core.models.MessageType.HELLO) {
                         clientId = message.getSenderId();
                         clients.put(clientId, out);
                         logger.info("Client connected: {}", com.e2eechat.core.util.Redact.id(clientId));
-                    } else if (message.getType() == Message.MessageType.DISCONNECT) {
+                    } else if (message.getType() == com.e2eechat.core.models.MessageType.DISCONNECT) {
                         break;
                     } else {
                         routeMessage(message);

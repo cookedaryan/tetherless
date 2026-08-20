@@ -22,12 +22,12 @@ public class ChatService extends Service {
                 out = new ObjectOutputStream(socket.getOutputStream());
                 in = new ObjectInputStream(socket.getInputStream());
                 
-                out.writeObject(new Message(Message.MessageType.CONNECT, "mobileUser", null, null));
+                out.writeObject(new com.e2eechat.core.models.MessageBuilder().setType(com.e2eechat.core.models.MessageType.HELLO).setSenderId("mobileUser").setMessageId(java.util.UUID.randomUUID().toString()).setTimestamp(System.currentTimeMillis()).buildUnsigned());
                 out.flush();
 
                 while (true) {
                     Message msg = (Message) in.readObject();
-                    if (msg.getType() == Message.MessageType.TEXT_MESSAGE) {
+                    if (msg.getType() == com.e2eechat.core.models.MessageType.TEXT_MESSAGE) {
                         // Handle incoming message
                     }
                 }
