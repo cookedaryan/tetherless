@@ -11,9 +11,9 @@ A decentralized End-to-End Encrypted Chat Application consisting of:
 - [Development Plan](docs/development_plan.md): The authoritative ticket-wise plan, threat model, and definition of done.
 
 ## Current State & Next Steps
-- **Status:** Scaffolded. Compiles for `core-shared`, `chat-server`, `chat-desktop`. `chat-mobile` currently fails to compile.
-- **Active Phase:** Phase 0 — Build and toolchain hygiene
-- **Current Ticket:** `BUILD-01` — Make every module compile from a clean checkout
+- **Status:** Scaffolded. All modules (`core-shared`, `chat-server`, `chat-desktop`, `chat-mobile`) compile successfully from a clean checkout.
+- **Active Phase:** Phase 0 â€” Build and toolchain hygiene
+- **Current Ticket:** `BUILD-02` â€” Static analysis and code hygiene baseline
 
 ## Architectural & Security Constraints
 - **Threat Model:** The server is assumed hostile/compromised and must NEVER see plaintext or key material.
