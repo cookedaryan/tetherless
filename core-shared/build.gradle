@@ -2,6 +2,13 @@ plugins {
     id 'java-library'
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
 dependencies {
-    testImplementation 'junit:junit:4.13.2'
+    testImplementation libs.junit
+    testImplementation libs.assertj.core
+    // Explicitly forbid any Android or JavaFX dependency here — this module must stay platform-neutral.
 }

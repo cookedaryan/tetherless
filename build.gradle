@@ -4,11 +4,14 @@ plugins {
 
 allprojects {
     repositories {
-        mavenCentral()
         google()
+        mavenCentral()
     }
 }
 
 subprojects {
     version = '1.0-SNAPSHOT'
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs << "-Xlint:all"
+    }
 }
