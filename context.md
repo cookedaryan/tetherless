@@ -22,3 +22,4 @@ A decentralized End-to-End Encrypted Chat Application consisting of:
 - **No Payload Logging:** Keys, IVs, and message payloads must never be logged.
 
 
+
