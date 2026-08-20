@@ -1,0 +1,13 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.e2eechat.server.Main'
+}
+
+dependencies {
+    implementation project(':core-shared')
+    testImplementation 'junit:junit:4.13.2'
+}

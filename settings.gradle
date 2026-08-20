@@ -1,0 +1,12 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+rootProject.name = 'e2ee-chat'
+include 'core-shared'
+include 'chat-server'
+include 'chat-desktop'
+include 'chat-mobile'

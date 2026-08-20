@@ -1,0 +1,13 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.e2eechat.desktop.Main'
+}
+
+dependencies {
+    implementation project(':core-shared')
+    implementation 'org.xerial:sqlite-jdbc:3.41.2.1'
+}
