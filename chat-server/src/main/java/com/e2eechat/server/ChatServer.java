@@ -9,8 +9,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.KeyStore;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLServerSocketFactory;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -52,11 +59,45 @@ public class ChatServer {
         this.metricsServer = new MetricsServer(config.getPort() == 0 ? 0 : config.getPort() + 1);
     }
 
+    private ServerSocket createSSLServerSocket() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        try (InputStream ksIs = getClass().getClassLoader().getResourceAsStream(config.getKeystorePath())) {
+            if (ksIs == null) {
+                // Try from file system
+                try (FileInputStream fis = new FileInputStream(config.getKeystorePath())) {
+                    keyStore.load(fis, config.getKeystorePassword().toCharArray());
+                }
+            } else {
+                keyStore.load(ksIs, config.getKeystorePassword().toCharArray());
+            }
+        }
+        
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keyStore, config.getKeystorePassword().toCharArray());
+        
+        SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
+        sslContext.init(kmf.getKeyManagers(), null, null);
+        
+        SSLServerSocketFactory factory = sslContext.getServerSocketFactory();
+        SSLServerSocket serverSocket = (SSLServerSocket) factory.createServerSocket(config.getPort());
+        
+        serverSocket.setEnabledProtocols(new String[]{"TLSv1.3"});
+        
+        // Restrict to AEAD cipher suites (TLS 1.3 standard ones)
+        serverSocket.setEnabledCipherSuites(new String[]{
+            "TLS_AES_128_GCM_SHA256",
+            "TLS_AES_256_GCM_SHA384",
+            "TLS_CHACHA20_POLY1305_SHA256"
+        });
+        
+        return serverSocket;
+    }
+
     public void start() {
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
 
         try {
-            serverSocket = new ServerSocket(config.getPort());
+            serverSocket = createSSLServerSocket();
             running = true;
             logger.info("Relay Server started on port {}", serverSocket.getLocalPort());
             
@@ -72,8 +113,9 @@ public class ChatServer {
                     }
                 }
             }
-        } catch (IOException e) {
-            logger.error("Error starting server", e);
+        } catch (Exception e) {
+            logger.error("Failed to start server", e);
+            throw new RuntimeException("Failed to start server", e);
         } finally {
             shutdown();
         }

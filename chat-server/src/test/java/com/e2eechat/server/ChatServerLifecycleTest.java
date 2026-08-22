@@ -35,8 +35,11 @@ public class ChatServerLifecycleTest {
         new Thread(() -> server.start()).start();
         
         // Wait for server to bind
-        Thread.sleep(200);
-        port = server.getPort();
+        int attempts = 0;
+        while ((port = server.getPort()) == 0 && attempts < 50) {
+            Thread.sleep(100);
+            attempts++;
+        }
     }
 
     @After
@@ -46,8 +49,26 @@ public class ChatServerLifecycleTest {
         }
     }
 
-    private Socket createSocket() throws IOException {
-        return new Socket("localhost", port);
+    private Socket createSocket() throws Exception {
+        java.security.KeyStore trustStore = java.security.KeyStore.getInstance("PKCS12");
+        try (java.io.InputStream tsIs = getClass().getClassLoader().getResourceAsStream("dev-keystore.p12")) {
+            if (tsIs == null) {
+                try (java.io.FileInputStream fis = new java.io.FileInputStream("chat-server/src/main/resources/dev-keystore.p12")) {
+                    trustStore.load(fis, "changeit".toCharArray());
+                }
+            } else {
+                trustStore.load(tsIs, "changeit".toCharArray());
+            }
+        }
+        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore);
+        javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLSv1.3");
+        sslContext.init(null, tmf.getTrustManagers(), null);
+        javax.net.ssl.SSLSocketFactory factory = sslContext.getSocketFactory();
+        javax.net.ssl.SSLSocket sslSocket = (javax.net.ssl.SSLSocket) factory.createSocket("127.0.0.1", port);
+        sslSocket.setEnabledProtocols(new String[]{"TLSv1.3"});
+        sslSocket.startHandshake();
+        return sslSocket;
     }
 
     private Message createHello(String senderId) {

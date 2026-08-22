@@ -30,8 +30,13 @@ public class ChatServerTest {
         config.setHandshakeTimeoutMs(1000);
         server = new ChatServer(config);
         new Thread(() -> server.start()).start();
-        Thread.sleep(200);
-        port = server.getPort();
+        
+        // Wait for server to bind and get a non-zero port
+        int attempts = 0;
+        while ((port = server.getPort()) == 0 && attempts < 50) {
+            Thread.sleep(100);
+            attempts++;
+        }
     }
 
     @After
@@ -39,6 +44,16 @@ public class ChatServerTest {
         if (server != null) {
             server.shutdown();
         }
+    }
+
+    @Test(timeout = 5000, expected = Exception.class)
+    public void testPlaintextConnectionRejected() throws Exception {
+        TestClient alice = new TestClient("alice");
+        // Connecting with plaintext Socket to an SSLServerSocket
+        alice.connectPlaintext(port);
+        alice.sendHello(); // Should throw exception when server drops connection due to TLS handshake failure
+        alice.awaitMessage(1000);
+        alice.close();
     }
 
     @Test(timeout = 5000)

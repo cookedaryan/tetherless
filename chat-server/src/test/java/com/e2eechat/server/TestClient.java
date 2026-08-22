@@ -6,10 +6,21 @@ import com.e2eechat.core.models.MessageType;
 import com.e2eechat.core.protocol.FrameReader;
 import com.e2eechat.core.protocol.FrameWriter;
 
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.security.KeyStore;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.UUID;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 
 import static org.junit.Assert.fail;
 
@@ -23,8 +34,38 @@ public class TestClient {
         this.clientId = clientId;
     }
 
-    public void connect(int port) throws IOException {
-        socket = new Socket("localhost", port);
+    public void connectPlaintext(int port) throws IOException {
+        socket = new Socket("127.0.0.1", port);
+        in = new FrameReader(socket.getInputStream());
+        out = new FrameWriter(socket.getOutputStream());
+    }
+
+    public void connect(int port) throws Exception {
+        // Load the development keystore as a truststore to strictly pin the dev cert
+        KeyStore trustStore = KeyStore.getInstance("PKCS12");
+        try (InputStream tsIs = getClass().getClassLoader().getResourceAsStream("dev-keystore.p12")) {
+            if (tsIs == null) {
+                try (FileInputStream fis = new FileInputStream("chat-server/src/main/resources/dev-keystore.p12")) {
+                    trustStore.load(fis, "changeit".toCharArray());
+                }
+            } else {
+                trustStore.load(tsIs, "changeit".toCharArray());
+            }
+        }
+        
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore);
+        
+        SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
+        sslContext.init(null, tmf.getTrustManagers(), null);
+        
+        SSLSocketFactory factory = sslContext.getSocketFactory();
+        SSLSocket sslSocket = (SSLSocket) factory.createSocket("127.0.0.1", port);
+        
+        sslSocket.setEnabledProtocols(new String[]{"TLSv1.3"});
+        sslSocket.startHandshake();
+        
+        this.socket = sslSocket;
         in = new FrameReader(socket.getInputStream());
         out = new FrameWriter(socket.getOutputStream());
     }
