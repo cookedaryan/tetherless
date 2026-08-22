@@ -45,11 +45,16 @@ public class SessionManager {
         if (Math.abs(now - msg.getTimestamp()) > 300000) {
             return new ProcessResult(Outcome.DROP_REPLAY, null); // Clock skew / old replay
         }
+        
+        if (msg.getType() == MessageType.HELLO) {
+            // Hello messages are either unsigned or self-signed and process differently
+            return new ProcessResult(Outcome.DELIVER, msg.getPayload());
+        }
 
-        // Verify signature
+        // Verify signature strictly for all other messages
         PublicKey peerIdentityKey = peerKeyLookup.apply(msg.getSenderId());
         if (peerIdentityKey == null) {
-            return new ProcessResult(Outcome.DROP_BAD_SIGNATURE, null);
+            return new ProcessResult(Outcome.DROP_BAD_SIGNATURE, null); // Strictly require key
         }
 
         SignatureVerifier.VerificationResult sigResult = SignatureVerifier.verify(msg, peerIdentityKey);
@@ -61,14 +66,11 @@ public class SessionManager {
         Session session = getSession(msg.getSenderId());
 
         if (msg.getType() == MessageType.KEY_EXCHANGE_INIT) {
-            // Simultaneous initiation race resolution
             if (session.getState() == Session.State.HANDSHAKE_SENT) {
                 if (localClientId.compareTo(msg.getSenderId()) > 0) {
-                    // We lose the race, accept their init
                     session.setState(Session.State.HANDSHAKE_RECEIVED);
                     return new ProcessResult(Outcome.HANDSHAKE_PROCEED, null);
                 } else {
-                    // We win the race, drop their init
                     return new ProcessResult(Outcome.HANDSHAKE_DROPPED, null);
                 }
             }
@@ -86,7 +88,6 @@ public class SessionManager {
                 return new ProcessResult(Outcome.DROP_NO_SESSION, null);
             }
 
-            // Extract counter from IV
             byte[] iv = msg.getIv();
             if (iv == null || iv.length != 12) {
                 return new ProcessResult(Outcome.DROP_NO_SESSION, null);
@@ -104,7 +105,7 @@ public class SessionManager {
                 byte[] plaintext = AESUtils.decrypt(msg.getPayload(), session.getSecretKey(), iv);
                 return new ProcessResult(Outcome.DELIVER, plaintext);
             } catch (Exception e) {
-                return new ProcessResult(Outcome.DROP_NO_SESSION, null); // E.g. AEADBadTagException
+                return new ProcessResult(Outcome.DROP_NO_SESSION, null); 
             }
         }
         
@@ -114,7 +115,7 @@ public class SessionManager {
     public byte[] generateIv(Session session, boolean isInitiator) {
         long counter = session.getNextSendCounter();
         ByteBuffer bb = ByteBuffer.allocate(12);
-        bb.putInt(isInitiator ? 1 : 0); // direction prefix
+        bb.putInt(isInitiator ? 1 : 0);
         bb.putLong(counter);
         return bb.array();
     }

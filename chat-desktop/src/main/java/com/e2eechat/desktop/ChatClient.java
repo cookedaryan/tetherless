@@ -2,6 +2,7 @@ package com.e2eechat.desktop;
 
 import com.e2eechat.core.crypto.AESUtils;
 import com.e2eechat.core.crypto.DHUtils;
+import com.e2eechat.core.keys.IdentityKeyStore;
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
 import com.e2eechat.core.models.MessageType;
@@ -12,14 +13,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import javax.swing.JOptionPane;
 
 public class ChatClient implements MessageListener {
     private static final Logger logger = LoggerFactory.getLogger(ChatClient.class);
@@ -28,6 +33,7 @@ public class ChatClient implements MessageListener {
     private final KeyPair identityKey;
     private final SessionManager sessionManager;
     private final MessageRepository messageRepository;
+    private final IdentityKeyStore keyStoreManager;
     
     private ConnectionManager connectionManager;
     private final List<MessageListener> listeners = new CopyOnWriteArrayList<>();
@@ -35,11 +41,12 @@ public class ChatClient implements MessageListener {
     
     private String currentPeerId = null;
 
-    public ChatClient(String clientId, KeyPair identityKey, SessionManager sessionManager, MessageRepository messageRepository) {
+    public ChatClient(String clientId, KeyPair identityKey, SessionManager sessionManager, MessageRepository messageRepository, IdentityKeyStore keyStoreManager) {
         this.clientId = clientId;
         this.identityKey = identityKey;
         this.sessionManager = sessionManager;
         this.messageRepository = messageRepository;
+        this.keyStoreManager = keyStoreManager;
     }
 
     public void connect(String host, int port) {
@@ -90,18 +97,28 @@ public class ChatClient implements MessageListener {
         }
         
         try {
+            // 1. Send HELLO with our Identity Public Key to initiate Trust On First Use
+            Message helloMsg = new MessageBuilder()
+                    .setType(MessageType.HELLO)
+                    .setSenderId(clientId)
+                    .setReceiverId(peerId)
+                    .setPayload(identityKey.getPublic().getEncoded())
+                    .setIv(new byte[0])
+                    .setMessageId(UUID.randomUUID().toString())
+                    .setTimestamp(System.currentTimeMillis())
+                    .buildUnsigned();
+            connectionManager.sendMessage(helloMsg);
+
+            // 2. Generate DH Keypair and send KEY_EXCHANGE_INIT
             KeyPair dhPair = DHUtils.generateKeyPair();
             session.setLocalDhPublicKey(dhPair.getPublic());
-            
             dhPrivateKeys.put(peerId, dhPair.getPrivate());
-            
-            byte[] pubKeyBytes = dhPair.getPublic().getEncoded();
             
             Message initMsg = new MessageBuilder()
                     .setType(MessageType.KEY_EXCHANGE_INIT)
                     .setSenderId(clientId)
                     .setReceiverId(peerId)
-                    .setPayload(pubKeyBytes)
+                    .setPayload(dhPair.getPublic().getEncoded())
                     .setIv(new byte[0])
                     .setMessageId(UUID.randomUUID().toString())
                     .setTimestamp(System.currentTimeMillis())
@@ -138,6 +155,45 @@ public class ChatClient implements MessageListener {
         Session session = sessionManager.getSession(msg.getSenderId());
         
         try {
+            if (msg.getType() == MessageType.HELLO) {
+                KeyFactory kf = KeyFactory.getInstance("RSA");
+                PublicKey receivedKey = kf.generatePublic(new X509EncodedKeySpec(msg.getPayload()));
+                
+                Optional<PublicKey> existingKey = keyStoreManager.getPeerKey(msg.getSenderId());
+                if (!existingKey.isPresent()) {
+                    logger.info("TOFU: Storing new key for peer {}", msg.getSenderId());
+                    keyStoreManager.storePeerKey(msg.getSenderId(), receivedKey);
+                    
+                    // Reply with our HELLO if we haven't already
+                    Message helloReply = new MessageBuilder()
+                            .setType(MessageType.HELLO)
+                            .setSenderId(clientId)
+                            .setReceiverId(msg.getSenderId())
+                            .setPayload(identityKey.getPublic().getEncoded())
+                            .setIv(new byte[0])
+                            .setMessageId(UUID.randomUUID().toString())
+                            .setTimestamp(System.currentTimeMillis())
+                            .buildUnsigned();
+                    connectionManager.sendMessage(helloReply);
+                } else if (!existingKey.get().equals(receivedKey)) {
+                    logger.error("SECURITY ALERT: Key for peer {} has changed!", msg.getSenderId());
+                    // Notifying UI via a special error message
+                    Message alert = new MessageBuilder()
+                            .setType(MessageType.ERROR)
+                            .setSenderId(msg.getSenderId())
+                            .setReceiverId(clientId)
+                            .setPayload(("SECURITY ALERT: The identity key for " + msg.getSenderId() + " has changed! Possible MITM attack.").getBytes(StandardCharsets.UTF_8))
+                            .setIv(new byte[0])
+                            .setMessageId(UUID.randomUUID().toString())
+                            .setTimestamp(System.currentTimeMillis())
+                            .buildUnsigned();
+                    for (MessageListener listener : listeners) {
+                        listener.onMessageReceived(alert);
+                    }
+                }
+                return;
+            }
+
             switch (result.outcome) {
                 case HANDSHAKE_PROCEED:
                     if (msg.getType() == MessageType.KEY_EXCHANGE_INIT) {
@@ -191,7 +247,6 @@ public class ChatClient implements MessageListener {
                     if (msg.getType() == MessageType.TEXT_MESSAGE) {
                         String plainText = new String(result.plaintext, StandardCharsets.UTF_8);
                         
-                        // Persist immediately
                         messageRepository.saveMessage(msg.getSenderId(), msg.getReceiverId(), plainText, msg.getTimestamp());
                         
                         Message decryptedMsg = new MessageBuilder()
@@ -248,8 +303,6 @@ public class ChatClient implements MessageListener {
         
         try {
             long timestamp = System.currentTimeMillis();
-            
-            // Persist locally before sending
             messageRepository.saveMessage(clientId, currentPeerId, text, timestamp);
             
             byte[] iv = sessionManager.generateIv(session, true);

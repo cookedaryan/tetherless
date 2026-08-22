@@ -9,7 +9,10 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileInputStream;
 import java.security.KeyPair;
+import java.security.PublicKey;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Function;
 
 public class Main {
     public static void main(String[] args) {
@@ -96,26 +99,19 @@ public class Main {
             // Client ID derived from display name + fingerprint
             String clientId = displayName + "#" + fingerprint.substring(0, 8);
             
-            // Create SessionManager. Note: For v1.0, peerKeyLookup is deferred to CORE-06.
-            // For now, we will assume a dummy trust model or mock it to accept signatures if possible.
-            // Wait, SignatureVerifier REQUIRES a valid public key to verify signatures!
-            // Without CORE-06, we don't have a way to securely lookup peer public keys.
-            // We need to fetch the peer's public key from somewhere, maybe exchange it in a plaintext HELLO?
-            // But the plan says "PeerKeyLookup will just return a dummy key or prompt the user, since CORE-06 is deferred".
-            // Actually, we must use the remote user's identity key! But how do we know it?
-            // If we don't have it, we can't verify the signature.
-            // Since we can't fetch it dynamically without CORE-06, we will bypass identity verification just for this step to see the flow work,
-            // or we just return a key we know (which defeats the purpose).
-            // Let's create an "insecure mode" lookup that returns null, and SignatureVerifier drops it...
-            // Oh, wait! The user prompt says: "PeerKeyLookup will just return a dummy key or prompt the user... bypass strictly pinned keys".
-            // If it returns null, SignatureVerifier will return NO_KEY_FOR_SENDER.
-            // Wait! I can't bypass SignatureVerifier unless I modify SessionManager.
-            // Let's modify SessionManager to accept NO_KEY_FOR_SENDER just for this phase, OR we can inject a dummy key that SignatureVerifier will fail on.
-            // Let's modify SessionManager to temporarily allow NO_KEY_FOR_SENDER in this phase (or we can just skip verifying if no key is present for testing).
+            Function<String, PublicKey> peerKeyLookup = senderId -> {
+                try {
+                    Optional<PublicKey> opt = keyStoreManager.getPeerKey(senderId);
+                    return opt.orElse(null);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return null;
+                }
+            };
             
-            SessionManager sessionManager = new SessionManager(clientId, senderId -> null); 
+            SessionManager sessionManager = new SessionManager(clientId, peerKeyLookup); 
             
-            ChatClient client = new ChatClient(clientId, identity, sessionManager, messageRepository);
+            ChatClient client = new ChatClient(clientId, identity, sessionManager, messageRepository, keyStoreManager);
             
             ChatWindow window = new ChatWindow(client, fingerprint);
             
