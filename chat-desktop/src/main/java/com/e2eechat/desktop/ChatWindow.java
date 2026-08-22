@@ -14,11 +14,32 @@ public class ChatWindow extends JFrame implements MessageListener {
     private final JLabel statusLabel;
     private final ChatClient client;
     
-    public ChatWindow(ChatClient client) {
+    public ChatWindow(ChatClient client, String fingerprint) {
         this.client = client;
         setTitle("E2EE Chat Desktop Client - " + client.getClientId());
-        setSize(450, 550);
+        setSize(500, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        
+        JMenuBar menuBar = new JMenuBar();
+        JMenu accountMenu = new JMenu("Account");
+        JMenuItem identityItem = new JMenuItem("My Identity...");
+        identityItem.addActionListener(e -> {
+            JTextArea textArea = new JTextArea(fingerprint);
+            textArea.setEditable(false);
+            textArea.setLineWrap(true);
+            textArea.setWrapStyleWord(true);
+            textArea.setOpaque(false);
+            textArea.setBorder(null);
+            
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.add(new JLabel("Your Safety Number (Fingerprint):"), BorderLayout.NORTH);
+            panel.add(textArea, BorderLayout.CENTER);
+            
+            JOptionPane.showMessageDialog(this, panel, "My Identity", JOptionPane.INFORMATION_MESSAGE);
+        });
+        accountMenu.add(identityItem);
+        menuBar.add(accountMenu);
+        setJMenuBar(menuBar);
         
         chatArea = new JTextArea();
         chatArea.setEditable(false);
@@ -70,7 +91,6 @@ public class ChatWindow extends JFrame implements MessageListener {
     @Override
     public void onMessageReceived(Message msg) {
         if (msg.getType() == MessageType.TEXT_MESSAGE) {
-            // In real app, we would decrypt msg.getPayload() here using AESUtils
             String text = new String(msg.getPayload(), StandardCharsets.UTF_8);
             appendMessage(msg.getSenderId() + ": " + text);
         } else if (msg.getType() == MessageType.ERROR) {
@@ -85,7 +105,7 @@ public class ChatWindow extends JFrame implements MessageListener {
             statusLabel.setText("Status: " + state);
             switch (state) {
                 case CONNECTED:
-                    statusLabel.setForeground(new Color(0, 128, 0)); // Dark green
+                    statusLabel.setForeground(new Color(0, 128, 0));
                     sendButton.setEnabled(true);
                     messageField.setEnabled(true);
                     break;
