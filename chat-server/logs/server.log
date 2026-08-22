@@ -1,0 +1,148 @@
+2026-08-22 12:41:53 [Thread-3] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56326
+2026-08-22 12:41:53 [Thread-3] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:41:54 [Thread-3] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:54 [Thread-3] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:54 [Thread-3] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:54 [Thread-3] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:54 [Thread-3] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:54 [Thread-3] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:54 [pool-1-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: de62fa
+2026-08-22 12:41:54 [pool-1-thread-5] INFO  com.e2eechat.server.ClientRegistry - Client registered: 041dde
+2026-08-22 12:41:54 [pool-1-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client registered: 86dcb7
+2026-08-22 12:41:54 [pool-1-thread-3] INFO  com.e2eechat.server.ClientRegistry - Client registered: b1ff0c
+2026-08-22 12:41:54 [pool-1-thread-4] INFO  com.e2eechat.server.ClientRegistry - Client registered: 6e7e59
+2026-08-22 12:41:54 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:41:54 [pool-1-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=de62fa
+2026-08-22 12:41:54 [pool-1-thread-2] INFO  com.e2eechat.server.ClientSession - hello: id=86dcb7
+2026-08-22 12:41:54 [pool-1-thread-1] INFO  com.e2eechat.server.ClientSession - disconnect: id=de62fa
+2026-08-22 12:41:54 [pool-1-thread-2] INFO  com.e2eechat.server.ClientSession - disconnect: id=86dcb7
+2026-08-22 12:41:54 [pool-1-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: de62fa
+2026-08-22 12:41:54 [pool-1-thread-3] INFO  com.e2eechat.server.ClientSession - hello: id=b1ff0c
+2026-08-22 12:41:54 [pool-1-thread-4] INFO  com.e2eechat.server.ClientSession - hello: id=6e7e59
+2026-08-22 12:41:54 [pool-1-thread-3] INFO  com.e2eechat.server.ClientSession - disconnect: id=b1ff0c
+2026-08-22 12:41:54 [pool-1-thread-5] INFO  com.e2eechat.server.ClientSession - hello: id=041dde
+2026-08-22 12:41:54 [pool-1-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 86dcb7
+2026-08-22 12:41:54 [pool-1-thread-6] INFO  com.e2eechat.server.ClientRegistry - Client registered: aeea3b
+2026-08-22 12:41:54 [pool-1-thread-5] INFO  com.e2eechat.server.ClientSession - disconnect: id=041dde
+2026-08-22 12:41:54 [pool-1-thread-3] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: b1ff0c
+2026-08-22 12:41:54 [pool-1-thread-4] INFO  com.e2eechat.server.ClientSession - disconnect: id=6e7e59
+2026-08-22 12:41:54 [pool-1-thread-5] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 041dde
+2026-08-22 12:41:54 [pool-1-thread-6] INFO  com.e2eechat.server.ClientSession - hello: id=aeea3b
+2026-08-22 12:41:54 [pool-1-thread-4] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 6e7e59
+2026-08-22 12:41:54 [pool-1-thread-6] INFO  com.e2eechat.server.ClientSession - disconnect: id=aeea3b
+2026-08-22 12:41:54 [pool-1-thread-6] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: aeea3b
+2026-08-22 12:41:55 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:41:55 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:41:55 [Thread-112] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56484
+2026-08-22 12:41:55 [Thread-112] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:41:55 [Thread-112] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:55 [pool-2-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: b6e3dc
+2026-08-22 12:41:55 [pool-2-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=b6e3dc
+2026-08-22 12:41:55 [pool-2-thread-1] INFO  com.e2eechat.server.ClientSession - disconnect: id=b6e3dc reason=EOFException
+2026-08-22 12:41:55 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:41:55 [pool-2-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: b6e3dc
+2026-08-22 12:41:56 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:41:56 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:41:56 [Thread-116] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56487
+2026-08-22 12:41:56 [Thread-116] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:41:56 [Thread-116] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:56 [pool-3-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: b6e3dc
+2026-08-22 12:41:56 [pool-3-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=b6e3dc
+2026-08-22 12:41:56 [Thread-116] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:56 [pool-3-thread-2] WARN  com.e2eechat.server.ClientRegistry - Client registration rejected (duplicate ID): b6e3dc
+2026-08-22 12:41:56 [pool-3-thread-2] WARN  com.e2eechat.server.ClientSession - reject-duplicate: id=b6e3dc
+2026-08-22 12:41:56 [pool-3-thread-1] INFO  com.e2eechat.server.ClientSession - disconnect: id=b6e3dc reason=EOFException
+2026-08-22 12:41:56 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:41:56 [pool-3-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: b6e3dc
+2026-08-22 12:41:57 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:41:57 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:41:57 [Thread-121] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56491
+2026-08-22 12:41:57 [Thread-121] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:41:57 [Thread-121] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:41:57 [pool-4-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: b6e3dc
+2026-08-22 12:41:57 [pool-4-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=b6e3dc
+2026-08-22 12:41:57 [pool-4-thread-1] INFO  com.e2eechat.server.ClientSession - disconnect: id=b6e3dc reason=EOFException
+2026-08-22 12:41:57 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:41:57 [pool-4-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: b6e3dc
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.ClientRegistry - Client registered: 2bd806
+2026-08-22 12:41:58 [Test worker] WARN  com.e2eechat.server.ClientRegistry - Client registration rejected (duplicate ID): 2bd806
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.ClientRegistry - Client registered: 2bd806
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.ClientRegistry - Client registered: 2bd806
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.ClientRegistry - Client registered: 81b637
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.ClientRegistry - Client registered: 2bd806
+2026-08-22 12:41:58 [Test worker] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 2bd806
+2026-08-22 12:41:58 [Thread-125] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56494
+2026-08-22 12:41:58 [Thread-125] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:41:59 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:42:00 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:42:00 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:42:00 [Thread-128] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56497
+2026-08-22 12:42:00 [Thread-128] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:42:00 [Thread-128] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:00 [Thread-128] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:00 [pool-6-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: 3f9210
+2026-08-22 12:42:00 [pool-6-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=3f9210
+2026-08-22 12:42:00 [Thread-128] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:00 [pool-6-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client registered: 0a041b
+2026-08-22 12:42:00 [pool-6-thread-2] INFO  com.e2eechat.server.ClientSession - hello: id=0a041b
+2026-08-22 12:42:00 [pool-6-thread-3] INFO  com.e2eechat.server.ClientRegistry - Client registered: 6025d1
+2026-08-22 12:42:00 [pool-6-thread-3] INFO  com.e2eechat.server.ClientSession - hello: id=6025d1
+2026-08-22 12:42:00 [Thread-128] WARN  com.e2eechat.server.ChatServer - Rejecting connection from 127.0.0.1: TOO_MANY_CONNECTIONS
+2026-08-22 12:42:00 [pool-6-thread-3] INFO  com.e2eechat.server.ClientSession - disconnect: id=6025d1 reason=EOFException
+2026-08-22 12:42:00 [pool-6-thread-1] INFO  com.e2eechat.server.ClientSession - disconnect: id=3f9210 reason=EOFException
+2026-08-22 12:42:00 [pool-6-thread-3] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 6025d1
+2026-08-22 12:42:00 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:42:00 [pool-6-thread-2] INFO  com.e2eechat.server.ClientSession - disconnect: id=0a041b reason=EOFException
+2026-08-22 12:42:00 [pool-6-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 3f9210
+2026-08-22 12:42:00 [pool-6-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 0a041b
+2026-08-22 12:42:01 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:42:01 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:42:01 [Thread-134] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56503
+2026-08-22 12:42:01 [Thread-134] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:42:01 [Thread-134] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:01 [pool-7-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: b23943
+2026-08-22 12:42:01 [pool-7-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=b23943
+2026-08-22 12:42:02 [pool-7-thread-1] WARN  com.e2eechat.server.ClientSession - rate-limited: id=b23943
+2026-08-22 12:42:02 [pool-7-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: b23943
+2026-08-22 12:42:02 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:42:03 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:42:03 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:42:03 [Thread-138] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56506
+2026-08-22 12:42:03 [Thread-138] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:42:03 [Thread-138] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:04 [pool-8-thread-1] WARN  com.e2eechat.server.ClientSession - timeout: id=unknown phase=handshake ip=127.0.0.1
+2026-08-22 12:42:04 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:42:05 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:42:05 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:42:05 [Thread-142] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56510
+2026-08-22 12:42:05 [Thread-142] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:42:05 [Thread-142] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:05 [Thread-142] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:05 [pool-9-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: 27c571
+2026-08-22 12:42:05 [pool-9-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=27c571
+2026-08-22 12:42:05 [pool-9-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client registered: 2bd806
+2026-08-22 12:42:05 [pool-9-thread-2] INFO  com.e2eechat.server.ClientSession - hello: id=2bd806
+2026-08-22 12:42:05 [pool-9-thread-2] WARN  com.e2eechat.server.ClientSession - buffer-overflow: id=27c571
+2026-08-22 12:42:05 [pool-9-thread-1] INFO  com.e2eechat.server.ClientSession - disconnect: id=27c571 reason=EOFException
+2026-08-22 12:42:05 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:42:05 [pool-9-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 27c571
+2026-08-22 12:42:05 [pool-9-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 2bd806
+2026-08-22 12:42:06 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:42:06 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.
+2026-08-22 12:42:06 [Thread-147] INFO  com.e2eechat.server.ChatServer - Relay Server started on port 56514
+2026-08-22 12:42:06 [Thread-147] INFO  com.e2eechat.server.MetricsServer - Metrics server started on port 0
+2026-08-22 12:42:06 [Thread-147] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:06 [Thread-147] INFO  com.e2eechat.server.ChatServer - accept: ip=127.0.0.1
+2026-08-22 12:42:06 [pool-10-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client registered: 2bd806
+2026-08-22 12:42:06 [pool-10-thread-1] INFO  com.e2eechat.server.ClientSession - hello: id=2bd806
+2026-08-22 12:42:06 [pool-10-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client registered: 81b637
+2026-08-22 12:42:06 [pool-10-thread-2] INFO  com.e2eechat.server.ClientSession - hello: id=81b637
+2026-08-22 12:42:06 [pool-10-thread-1] INFO  com.e2eechat.server.ClientSession - disconnect: id=2bd806 reason=EOFException
+2026-08-22 12:42:06 [pool-10-thread-2] INFO  com.e2eechat.server.ClientSession - disconnect: id=81b637 reason=EOFException
+2026-08-22 12:42:06 [Test worker] INFO  com.e2eechat.server.ChatServer - Shutting down ChatServer...
+2026-08-22 12:42:06 [pool-10-thread-1] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 2bd806
+2026-08-22 12:42:06 [pool-10-thread-2] INFO  com.e2eechat.server.ClientRegistry - Client unregistered: 81b637
+2026-08-22 12:42:07 [Test worker] INFO  com.e2eechat.server.MetricsServer - Metrics server stopped.
+2026-08-22 12:42:07 [Test worker] INFO  com.e2eechat.server.ChatServer - ChatServer shutdown complete.

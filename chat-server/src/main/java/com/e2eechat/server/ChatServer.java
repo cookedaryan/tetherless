@@ -30,6 +30,8 @@ public class ChatServer {
     private final AtomicInteger totalConnections = new AtomicInteger(0);
     private final ConcurrentHashMap<String, AtomicInteger> connectionsPerIp = new ConcurrentHashMap<>();
 
+    private final MetricsServer metricsServer;
+
     public ChatServer() {
         this(new ServerConfig());
     }
@@ -40,12 +42,14 @@ public class ChatServer {
         this.config = cfg;
         this.registry = new ClientRegistry();
         this.executorService = Executors.newFixedThreadPool(config.getMaxConnections() * 2);
+        this.metricsServer = new MetricsServer(port == 0 ? 0 : port + 1);
     }
     
     public ChatServer(ServerConfig config) {
         this.config = config;
         this.registry = new ClientRegistry();
         this.executorService = Executors.newFixedThreadPool(config.getMaxConnections() * 2);
+        this.metricsServer = new MetricsServer(config.getPort() == 0 ? 0 : config.getPort() + 1);
     }
 
     public void start() {
@@ -55,6 +59,8 @@ public class ChatServer {
             serverSocket = new ServerSocket(config.getPort());
             running = true;
             logger.info("Relay Server started on port {}", serverSocket.getLocalPort());
+            
+            metricsServer.start();
 
             while (running) {
                 try {
@@ -78,6 +84,7 @@ public class ChatServer {
         
         // 1. Check max connections
         if (totalConnections.get() >= config.getMaxConnections()) {
+            Metrics.rejectedServerFull.incrementAndGet();
             rejectConnection(clientSocket, "SERVER_FULL");
             return;
         }
@@ -85,6 +92,7 @@ public class ChatServer {
         // 2. Check per-IP limit
         AtomicInteger ipCount = connectionsPerIp.computeIfAbsent(ip, k -> new AtomicInteger(0));
         if (ipCount.get() >= config.getMaxConnectionsPerIp()) {
+            Metrics.rejectedTooManyConnections.incrementAndGet();
             rejectConnection(clientSocket, "TOO_MANY_CONNECTIONS");
             return;
         }
@@ -92,9 +100,13 @@ public class ChatServer {
         // Accept
         totalConnections.incrementAndGet();
         ipCount.incrementAndGet();
+        Metrics.connectedClients.incrementAndGet();
+        
+        logger.info("accept: ip={}", ip);
         
         Runnable cleanupTask = () -> {
             totalConnections.decrementAndGet();
+            Metrics.connectedClients.decrementAndGet();
             AtomicInteger count = connectionsPerIp.get(ip);
             if (count != null) {
                 if (count.decrementAndGet() <= 0) {
@@ -164,10 +176,18 @@ public class ChatServer {
             Thread.currentThread().interrupt();
         }
         
+        if (metricsServer != null) {
+            metricsServer.stop();
+        }
+        
         logger.info("ChatServer shutdown complete.");
     }
     
     public int getPort() {
         return serverSocket != null ? serverSocket.getLocalPort() : config.getPort();
+    }
+    
+    public int getMetricsPort() {
+        return metricsServer != null ? metricsServer.getPort() : 0;
     }
 }

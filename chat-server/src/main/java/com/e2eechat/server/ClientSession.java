@@ -45,15 +45,19 @@ public class ClientSession implements Runnable {
         this.rateLimiter = new TokenBucket(config.getRateLimitBurst(), config.getRateLimitRefillSec());
     }
 
-    // Constructor for tests that haven't been updated yet
     public ClientSession(Socket socket, ClientRegistry registry) {
         this(socket, registry, new ServerConfig(), () -> {});
     }
 
     public void enqueueFrame(byte[] frame) {
         if (!running) return;
+        
+        Metrics.updateQueueHighWaterMark(outboundQueue.size());
+        
         if (!outboundQueue.offer(frame)) {
-            logger.warn("Outbound queue full for client {}, disconnecting to prevent blocking.", clientId != null ? Redact.id(clientId) : "unknown");
+            Metrics.rejectedBufferOverflow.incrementAndGet();
+            String redactedId = clientId != null ? Redact.id(clientId) : "unknown";
+            logger.warn("buffer-overflow: id={}", redactedId);
             
             try {
                 Message errorMsg = new MessageBuilder()
@@ -80,7 +84,7 @@ public class ClientSession implements Runnable {
             byte[] frame = MessageCodec.encode(message);
             enqueueFrame(frame);
         } catch (Exception e) {
-            logger.error("Failed to encode message", e);
+            logger.error("error encoding frame for {}", clientId != null ? Redact.id(clientId) : "unknown");
         }
     }
 
@@ -124,7 +128,7 @@ public class ClientSession implements Runnable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (IOException e) {
-                logger.info("Writer thread IO error: {}", e.getMessage());
+                // Ignore writer thread IO errors silently to prevent log spam
             } finally {
                 disconnect();
             }
@@ -149,15 +153,13 @@ public class ClientSession implements Runnable {
                     missedPings = 0;
                 } catch (SocketTimeoutException e) {
                     if (!handshakeComplete) {
-                        logger.warn("Client {} failed to handshake within {} ms. Dropping.", 
-                                socket.getInetAddress(), config.getHandshakeTimeoutMs());
+                        logger.warn("timeout: id=unknown phase=handshake ip={}", socket.getInetAddress().getHostAddress());
                         break;
                     }
                     
                     missedPings++;
                     if (missedPings >= 2) {
-                        logger.info("Client {} timed out after {} missed pings", 
-                                clientId != null ? Redact.id(clientId) : "unknown", missedPings);
+                        logger.info("timeout: id={}", Redact.id(clientId));
                         break;
                     }
                     
@@ -175,7 +177,9 @@ public class ClientSession implements Runnable {
                 // Rate Limiting Check
                 if (message.getType() != MessageType.PING && message.getType() != MessageType.PONG) {
                     if (!rateLimiter.tryConsume()) {
-                        logger.warn("Client {} exceeded rate limit. Disconnecting.", clientId != null ? Redact.id(clientId) : socket.getInetAddress());
+                        Metrics.rejectedRateLimit.incrementAndGet();
+                        String redactedId = clientId != null ? Redact.id(clientId) : "unknown";
+                        logger.warn("rate-limited: id={}", redactedId);
                         Message errorMsg = new MessageBuilder()
                                 .setType(MessageType.ERROR)
                                 .setSenderId("SERVER")
@@ -192,9 +196,10 @@ public class ClientSession implements Runnable {
                 if (message.getType() == MessageType.HELLO) {
                     if (clientId == null) {
                         clientId = message.getSenderId();
-                        if (writerThread != null) writerThread.setName("Writer-" + clientId);
+                        if (writerThread != null) writerThread.setName("Writer-" + Redact.id(clientId));
                         boolean registered = registry.register(clientId, this);
                         if (!registered) {
+                            logger.warn("reject-duplicate: id={}", Redact.id(clientId));
                             Message errorMsg = new MessageBuilder()
                                     .setType(MessageType.ERROR)
                                     .setSenderId("SERVER")
@@ -209,10 +214,10 @@ public class ClientSession implements Runnable {
                         
                         handshakeComplete = true;
                         socket.setSoTimeout(IDLE_TIMEOUT_MS);
-                    } else {
-                        logger.warn("Received duplicate HELLO from already identified client: {}", Redact.id(clientId));
+                        logger.info("hello: id={}", Redact.id(clientId));
                     }
                 } else if (message.getType() == MessageType.DISCONNECT) {
+                    logger.info("disconnect: id={}", Redact.id(clientId));
                     break;
                 } else if (message.getType() == MessageType.PING) {
                     Message pongMsg = new MessageBuilder()
@@ -225,18 +230,15 @@ public class ClientSession implements Runnable {
                     // Ignored, missedPings is reset
                 } else {
                     if (!handshakeComplete) {
-                        logger.warn("Received non-HELLO message before handshake from {}", socket.getInetAddress());
+                        logger.warn("reject-no-handshake: ip={}", socket.getInetAddress().getHostAddress());
                         break;
                     }
                     routeFrame(message.getReceiverId(), frame);
                 }
             }
         } catch (Exception e) {
-            if (clientId != null) {
-                logger.info("Client error or disconnect {}: {}", Redact.id(clientId), e.getMessage());
-            } else {
-                logger.info("Unknown client error or disconnect: {}", e.getMessage());
-            }
+            String redactedId = clientId != null ? Redact.id(clientId) : "unknown";
+            logger.info("disconnect: id={} reason={}", redactedId, e.getClass().getSimpleName());
         } finally {
             if (clientId != null) {
                 registry.unregister(clientId, this);
@@ -247,12 +249,12 @@ public class ClientSession implements Runnable {
 
     private void routeFrame(String receiverId, byte[] frame) {
         if (receiverId == null) {
-            logger.warn("Message dropped (no receiver specified)");
             return;
         }
 
         ClientSession receiverSession = registry.lookup(receiverId);
         if (receiverSession != null) {
+            Metrics.messagesRouted.incrementAndGet();
             receiverSession.enqueueFrame(frame);
         } else {
             try {
