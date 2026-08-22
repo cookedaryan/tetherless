@@ -49,8 +49,16 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         startChatItem.addActionListener(e -> {
             String peerId = JOptionPane.showInputDialog(this, "Enter Peer ID to start chat:");
             if (peerId != null && !peerId.trim().isEmpty()) {
-                client.startSecureChat(peerId.trim());
-                chatArea.append("--- Starting secure chat with " + peerId.trim() + " ---\n");
+                peerId = peerId.trim();
+                client.startSecureChat(peerId);
+                
+                chatArea.setText("");
+                chatArea.append("--- Starting secure chat with " + peerId + " ---\n");
+                
+                java.util.List<ChatMessage> history = client.getMessageRepository().getMessages(client.getClientId(), peerId, 50);
+                for (ChatMessage msg : history) {
+                    chatArea.append(msg.getSender() + ": " + msg.getContent() + "\n");
+                }
             }
         });
         chatMenu.add(startChatItem);

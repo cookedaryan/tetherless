@@ -13,8 +13,6 @@ import java.util.Properties;
 
 public class Main {
     public static void main(String[] args) {
-        DatabaseHelper.initializeDatabase();
-        
         String host = "localhost";
         int port = 8080;
         
@@ -22,6 +20,14 @@ public class Main {
         String configDirPath = System.getProperty("tetherless.config.dir", 
                 new File(System.getProperty("user.home"), ".tetherless").getAbsolutePath());
         File configDir = new File(configDirPath);
+        
+        if (!configDir.exists()) {
+            configDir.mkdirs();
+        }
+        
+        String dbPath = new File(configDir, "chat.db").getAbsolutePath();
+        DatabaseHelper.initializeDatabase(dbPath);
+        MessageRepository messageRepository = new MessageRepository(dbPath);
         
         File configFile = new File(configDir, "config.properties");
         if (configFile.exists()) {
@@ -105,14 +111,11 @@ public class Main {
             // If it returns null, SignatureVerifier will return NO_KEY_FOR_SENDER.
             // Wait! I can't bypass SignatureVerifier unless I modify SessionManager.
             // Let's modify SessionManager to accept NO_KEY_FOR_SENDER just for this phase, OR we can inject a dummy key that SignatureVerifier will fail on.
-            // Wait! The easiest way is to use our own key as the peer key in testing, but that won't work across two clients.
-            // Actually, the Message doesn't include the sender's public identity key, only the senderId.
-            // I'll leave the peerKeyLookup returning null for now, and I'll modify SessionManager to temporarily allow NO_KEY_FOR_SENDER in this phase (or we can just skip verifying if no key is present for testing).
+            // Let's modify SessionManager to temporarily allow NO_KEY_FOR_SENDER in this phase (or we can just skip verifying if no key is present for testing).
             
             SessionManager sessionManager = new SessionManager(clientId, senderId -> null); 
             
-            // Wait, we need to pass identity to ChatClient
-            ChatClient client = new ChatClient(clientId, identity, sessionManager);
+            ChatClient client = new ChatClient(clientId, identity, sessionManager, messageRepository);
             
             ChatWindow window = new ChatWindow(client, fingerprint);
             

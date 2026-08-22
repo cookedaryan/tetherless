@@ -27,6 +27,7 @@ public class ChatClient implements MessageListener {
     private final String clientId;
     private final KeyPair identityKey;
     private final SessionManager sessionManager;
+    private final MessageRepository messageRepository;
     
     private ConnectionManager connectionManager;
     private final List<MessageListener> listeners = new CopyOnWriteArrayList<>();
@@ -34,10 +35,11 @@ public class ChatClient implements MessageListener {
     
     private String currentPeerId = null;
 
-    public ChatClient(String clientId, KeyPair identityKey, SessionManager sessionManager) {
+    public ChatClient(String clientId, KeyPair identityKey, SessionManager sessionManager, MessageRepository messageRepository) {
         this.clientId = clientId;
         this.identityKey = identityKey;
         this.sessionManager = sessionManager;
+        this.messageRepository = messageRepository;
     }
 
     public void connect(String host, int port) {
@@ -75,6 +77,10 @@ public class ChatClient implements MessageListener {
         return sessionManager.getSession(currentPeerId);
     }
     
+    public MessageRepository getMessageRepository() {
+        return messageRepository;
+    }
+    
     public void startSecureChat(String peerId) {
         this.currentPeerId = peerId;
         Session session = sessionManager.getSession(peerId);
@@ -87,10 +93,6 @@ public class ChatClient implements MessageListener {
             KeyPair dhPair = DHUtils.generateKeyPair();
             session.setLocalDhPublicKey(dhPair.getPublic());
             
-            // We need to keep track of our private key for derivation.
-            // A hack for now: store it temporarily in the session object or local map.
-            // Since Session class doesn't store private key, we will extend it or store it in a local map.
-            // For simplicity, let's just keep it in a map here.
             dhPrivateKeys.put(peerId, dhPair.getPrivate());
             
             byte[] pubKeyBytes = dhPair.getPublic().getEncoded();
@@ -145,7 +147,7 @@ public class ChatClient implements MessageListener {
                         KeyPair dhPair = DHUtils.generateKeyPair();
                         session.setLocalDhPublicKey(dhPair.getPublic());
                         
-                        byte[] salt = new byte[32]; // Ideally random and exchanged, but simplified
+                        byte[] salt = new byte[32]; 
                         byte[] info = "tetherless-v1 aes-256-gcm".getBytes();
                         byte[] sharedSecret = DHUtils.generateSharedSecret(dhPair.getPrivate(), remoteDh, salt, info);
                         session.setSecretKey(new SecretKeySpec(sharedSecret, "AES"));
@@ -187,7 +189,11 @@ public class ChatClient implements MessageListener {
                     break;
                 case DELIVER:
                     if (msg.getType() == MessageType.TEXT_MESSAGE) {
-                        // Create a virtual plaintext message to pass to UI
+                        String plainText = new String(result.plaintext, StandardCharsets.UTF_8);
+                        
+                        // Persist immediately
+                        messageRepository.saveMessage(msg.getSenderId(), msg.getReceiverId(), plainText, msg.getTimestamp());
+                        
                         Message decryptedMsg = new MessageBuilder()
                                 .setType(MessageType.TEXT_MESSAGE)
                                 .setSenderId(msg.getSenderId())
@@ -197,7 +203,7 @@ public class ChatClient implements MessageListener {
                                 .setMessageId(msg.getMessageId())
                                 .setTimestamp(msg.getTimestamp())
                                 .setSignature(msg.getSignature())
-                                .buildUnsigned(); // Not re-signing, just for UI
+                                .buildUnsigned();
                         
                         for (MessageListener listener : listeners) {
                             listener.onMessageReceived(decryptedMsg);
@@ -224,9 +230,6 @@ public class ChatClient implements MessageListener {
     }
     
     private void notifySessionStateChanged(Session.State state) {
-        // We'll create a synthetic callback for UI if needed, 
-        // or just rely on direct polling in ChatWindow.
-        // For simplicity, we'll let ChatWindow poll or we can add a listener method.
         for (MessageListener listener : listeners) {
             if (listener instanceof SessionStateListener) {
                 ((SessionStateListener) listener).onSessionStateChanged(state);
@@ -244,6 +247,11 @@ public class ChatClient implements MessageListener {
         }
         
         try {
+            long timestamp = System.currentTimeMillis();
+            
+            // Persist locally before sending
+            messageRepository.saveMessage(clientId, currentPeerId, text, timestamp);
+            
             byte[] iv = sessionManager.generateIv(session, true);
             byte[] plaintext = text.getBytes(StandardCharsets.UTF_8);
             byte[] ciphertext = AESUtils.encrypt(plaintext, session.getSecretKey(), iv);
@@ -255,7 +263,7 @@ public class ChatClient implements MessageListener {
                     .setPayload(ciphertext)
                     .setIv(iv)
                     .setMessageId(UUID.randomUUID().toString())
-                    .setTimestamp(System.currentTimeMillis())
+                    .setTimestamp(timestamp)
                     .buildUnsigned();
                     
             Message signed = MessageSigner.sign(msg, identityKey.getPrivate());
