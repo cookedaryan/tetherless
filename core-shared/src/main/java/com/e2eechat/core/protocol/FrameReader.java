@@ -14,6 +14,11 @@ public class FrameReader {
     }
 
     public Message readMessage() throws IOException, ProtocolException {
+        byte[] payload = readFrame();
+        return MessageCodec.decode(payload);
+    }
+
+    public byte[] readFrame() throws IOException, ProtocolException {
         int length = dis.readInt();
         if (length < 0 || length > MAX_FRAME_BYTES) {
             throw new ProtocolException("Invalid frame length: " + length);
@@ -24,7 +29,7 @@ public class FrameReader {
         }
         byte[] payload = new byte[length];
         dis.readFully(payload);
-        return MessageCodec.decode(payload);
+        return payload;
     }
 }
 

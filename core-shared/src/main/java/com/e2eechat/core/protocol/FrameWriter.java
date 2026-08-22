@@ -13,8 +13,12 @@ public class FrameWriter {
         this.dos = new DataOutputStream(os);
     }
 
-    public synchronized void writeMessage(Message msg) throws IOException, ProtocolException {
+    public void writeMessage(Message msg) throws IOException, ProtocolException {
         byte[] payload = MessageCodec.encode(msg);
+        writeFrame(payload);
+    }
+
+    public synchronized void writeFrame(byte[] payload) throws IOException {
         dos.writeInt(payload.length);
         dos.writeByte(FRAME_VERSION);
         dos.write(payload);
