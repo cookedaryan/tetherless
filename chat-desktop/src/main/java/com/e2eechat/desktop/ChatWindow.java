@@ -6,157 +6,185 @@ import com.e2eechat.core.session.Session;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 public class ChatWindow extends JFrame implements MessageListener, SessionStateListener {
-    private final JTextArea chatArea;
-    private final JTextField messageField;
-    private final JButton sendButton;
-    private final JLabel netStatusLabel;
-    private final JLabel sessionStatusLabel;
+
     private final ChatClient client;
-    private boolean isNetworkConnected = false;
     
+    private final JList<ChatMessage> chatList;
+    private final DefaultListModel<ChatMessage> chatModel;
+    private final JTextField inputField;
+    private final JButton sendButton;
+    private final JLabel headerLabel;
+    private final JPanel rightPanel;
+
     public ChatWindow(ChatClient client, String fingerprint) {
         this.client = client;
+        
         setTitle("E2EE Chat - " + client.getClientId());
-        setSize(500, 600);
+        setSize(800, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         
-        chatArea = new JTextArea();
-        chatArea.setEditable(false);
-        chatArea.setLineWrap(true);
-        add(new JScrollPane(chatArea), BorderLayout.CENTER);
-
-        JMenuBar menuBar = new JMenuBar();
-        JMenu accountMenu = new JMenu("Account");
-        JMenuItem identityItem = new JMenuItem("My Identity...");
-        identityItem.addActionListener(e -> {
-            JTextArea textArea = new JTextArea(fingerprint);
-            textArea.setEditable(false);
-            textArea.setLineWrap(true);
-            textArea.setOpaque(false);
-            textArea.setBorder(null);
-            JPanel panel = new JPanel(new BorderLayout());
-            panel.add(new JLabel("Your Safety Number (Fingerprint):"), BorderLayout.NORTH);
-            panel.add(textArea, BorderLayout.CENTER);
-            JOptionPane.showMessageDialog(this, panel, "My Identity", JOptionPane.INFORMATION_MESSAGE);
-        });
-        accountMenu.add(identityItem);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         
-        JMenu chatMenu = new JMenu("Chat");
-        JMenuItem startChatItem = new JMenuItem("Start Secure Chat...");
-        startChatItem.addActionListener(e -> {
-            String peerId = JOptionPane.showInputDialog(this, "Enter Peer ID to start chat:");
-            if (peerId != null && !peerId.trim().isEmpty()) {
-                peerId = peerId.trim();
-                client.startSecureChat(peerId);
-                
-                chatArea.setText("");
-                chatArea.append("--- Starting secure chat with " + peerId + " ---\n");
-                
-                java.util.List<ChatMessage> history = client.getMessageRepository().getMessages(client.getClientId(), peerId, 50);
-                for (ChatMessage msg : history) {
-                    chatArea.append(msg.getSender() + ": " + msg.getContent() + "\n");
-                }
-            }
-        });
-        chatMenu.add(startChatItem);
+        ConversationListPanel leftPanel = new ConversationListPanel(client, this::onConversationSelected);
+        splitPane.setLeftComponent(leftPanel);
         
-        menuBar.add(accountMenu);
-        menuBar.add(chatMenu);
-        setJMenuBar(menuBar);
+        rightPanel = new JPanel(new BorderLayout());
+        
+        headerLabel = new JLabel("Select a conversation to start");
+        headerLabel.setOpaque(true);
+        headerLabel.setBackground(Color.LIGHT_GRAY);
+        headerLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 14));
+        headerLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        headerLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        rightPanel.add(headerLabel, BorderLayout.NORTH);
+        
+        chatModel = new DefaultListModel<>();
+        chatList = new JList<>(chatModel);
+        chatList.setCellRenderer(new MessageBubbleRenderer(client.getClientId()));
+        chatList.setBackground(new Color(240, 240, 240));
+        
+        rightPanel.add(new JScrollPane(chatList), BorderLayout.CENTER);
         
         JPanel bottomPanel = new JPanel(new BorderLayout());
+        inputField = new JTextField();
+        inputField.setEnabled(false);
+        bottomPanel.add(inputField, BorderLayout.CENTER);
         
-        JPanel inputPanel = new JPanel(new BorderLayout());
-        messageField = new JTextField();
         sendButton = new JButton("Send");
-        updateInputState(Session.State.IDLE);
+        sendButton.setEnabled(false);
+        bottomPanel.add(sendButton, BorderLayout.EAST);
         
-        inputPanel.add(messageField, BorderLayout.CENTER);
-        inputPanel.add(sendButton, BorderLayout.EAST);
-        bottomPanel.add(inputPanel, BorderLayout.CENTER);
+        rightPanel.add(bottomPanel, BorderLayout.SOUTH);
         
-        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        netStatusLabel = new JLabel("Net: " + ConnectionState.DISCONNECTED);
-        netStatusLabel.setForeground(Color.RED);
-        sessionStatusLabel = new JLabel(" | Session: IDLE");
-        sessionStatusLabel.setForeground(Color.GRAY);
-        statusPanel.add(netStatusLabel);
-        statusPanel.add(sessionStatusLabel);
+        splitPane.setRightComponent(rightPanel);
+        add(splitPane);
         
-        bottomPanel.add(statusPanel, BorderLayout.SOUTH);
-        add(bottomPanel, BorderLayout.SOUTH);
-        
-        sendButton.addActionListener(e -> sendMessage());
-        messageField.addActionListener(e -> sendMessage());
+        Action sendAction = new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String text = inputField.getText().trim();
+                if (!text.isEmpty()) {
+                    client.sendMessage(text);
+                    inputField.setText("");
+                    
+                    // Add local message immediately
+                    chatModel.addElement(new ChatMessage(client.getClientId(), client.getReceiverId(), text, System.currentTimeMillis()));
+                    scrollToBottom();
+                }
+            }
+        };
+        inputField.addActionListener(sendAction);
+        sendButton.addActionListener(sendAction);
         
         client.addMessageListener(this);
     }
     
-    private void sendMessage() {
-        if (!sendButton.isEnabled()) return;
-        String text = messageField.getText().trim();
-        if (!text.isEmpty()) {
-            client.sendMessage(text);
-            appendMessage("Me: " + text);
-            messageField.setText("");
-        }
+    private void onConversationSelected(String peerId) {
+        client.startSecureChat(peerId); // Initiates or resumes Handshake
+        
+        headerLabel.setText("Connecting to " + peerId + "...");
+        headerLabel.setBackground(Color.LIGHT_GRAY);
+        inputField.setEnabled(false);
+        sendButton.setEnabled(false);
+        
+        chatModel.clear();
+        
+        SwingWorker<List<ChatMessage>, Void> worker = new SwingWorker<List<ChatMessage>, Void>() {
+            @Override
+            protected List<ChatMessage> doInBackground() {
+                return client.getMessageRepository().getMessages(client.getClientId(), peerId, 50);
+            }
+            @Override
+            protected void done() {
+                try {
+                    List<ChatMessage> history = get();
+                    for (ChatMessage m : history) {
+                        chatModel.addElement(m);
+                    }
+                    scrollToBottom();
+                } catch (Exception ignored) {}
+            }
+        };
+        worker.execute();
     }
     
-    private void appendMessage(String message) {
+    private void scrollToBottom() {
         SwingUtilities.invokeLater(() -> {
-            chatArea.append(message + "\n");
-            chatArea.setCaretPosition(chatArea.getDocument().getLength());
+            int lastIndex = chatList.getModel().getSize() - 1;
+            if (lastIndex >= 0) {
+                chatList.ensureIndexIsVisible(lastIndex);
+            }
         });
     }
 
     @Override
     public void onMessageReceived(Message msg) {
-        if (msg.getType() == MessageType.TEXT_MESSAGE) {
-            String text = new String(msg.getPayload(), StandardCharsets.UTF_8);
-            appendMessage(msg.getSenderId() + ": " + text);
-        } else if (msg.getType() == MessageType.ERROR) {
-            String errorMsg = new String(msg.getPayload(), StandardCharsets.UTF_8);
-            appendMessage("[SERVER ERROR]: " + errorMsg);
-        }
+        SwingUtilities.invokeLater(() -> {
+            if (msg.getType() == MessageType.ERROR) {
+                String error = new String(msg.getPayload(), StandardCharsets.UTF_8);
+                if (error.contains("SECURITY ALERT")) {
+                    headerLabel.setText(error);
+                    headerLabel.setBackground(Color.RED);
+                    headerLabel.setForeground(Color.WHITE);
+                    inputField.setEnabled(false);
+                    sendButton.setEnabled(false);
+                }
+                return;
+            }
+            
+            if (msg.getType() == MessageType.TEXT_MESSAGE) {
+                if (msg.getSenderId().equals(client.getReceiverId())) {
+                    String text = new String(msg.getPayload(), StandardCharsets.UTF_8);
+                    chatModel.addElement(new ChatMessage(msg.getSenderId(), client.getClientId(), text, msg.getTimestamp()));
+                    scrollToBottom();
+                }
+            }
+        });
     }
 
     @Override
     public void onConnectionStateChanged(ConnectionState state) {
         SwingUtilities.invokeLater(() -> {
-            netStatusLabel.setText("Net: " + state);
-            isNetworkConnected = (state == ConnectionState.CONNECTED);
-            if (isNetworkConnected) {
-                netStatusLabel.setForeground(new Color(0, 128, 0));
+            if (state == ConnectionState.CONNECTED) {
+                // Connection is established. But session is per peer.
             } else {
-                netStatusLabel.setForeground(Color.RED);
+                headerLabel.setText("Disconnected from server");
+                headerLabel.setBackground(Color.ORANGE);
+                inputField.setEnabled(false);
+                sendButton.setEnabled(false);
             }
-            // Input state relies on both network and session
-            Session session = client.getSession();
-            updateInputState(session != null ? session.getState() : Session.State.IDLE);
         });
     }
-    
+
     @Override
     public void onSessionStateChanged(Session.State state) {
         SwingUtilities.invokeLater(() -> {
-            sessionStatusLabel.setText(" | Session: " + state);
+            String peerId = client.getReceiverId();
+            if (peerId == null) return;
+            
             if (state == Session.State.ESTABLISHED) {
-                sessionStatusLabel.setForeground(new Color(0, 128, 0));
-            } else if (state == Session.State.FAILED || state == Session.State.EXPIRED) {
-                sessionStatusLabel.setForeground(Color.RED);
+                String fp = client.getPeerFingerprint(peerId);
+                if (fp != null) {
+                    headerLabel.setText("Verified | Fingerprint: " + fp);
+                    headerLabel.setBackground(new Color(220, 248, 198));
+                    headerLabel.setForeground(Color.BLACK);
+                } else {
+                    headerLabel.setText("Connected to " + peerId);
+                }
+                inputField.setEnabled(true);
+                sendButton.setEnabled(true);
             } else {
-                sessionStatusLabel.setForeground(Color.ORANGE);
+                headerLabel.setText("Handshaking with " + peerId + "...");
+                headerLabel.setBackground(Color.LIGHT_GRAY);
+                headerLabel.setForeground(Color.BLACK);
+                inputField.setEnabled(false);
+                sendButton.setEnabled(false);
             }
-            updateInputState(state);
         });
-    }
-    
-    private void updateInputState(Session.State sessionState) {
-        boolean canSend = isNetworkConnected && (sessionState == Session.State.ESTABLISHED);
-        sendButton.setEnabled(canSend);
-        messageField.setEnabled(canSend);
     }
 }

@@ -329,6 +329,18 @@ public class ChatClient implements MessageListener {
         }
     }
     
+    public String getPeerFingerprint(String peerId) {
+        try {
+            Optional<PublicKey> key = keyStoreManager.getPeerKey(peerId);
+            if (key.isPresent()) {
+                return keyStoreManager.fingerprint(key.get());
+            }
+        } catch (Exception e) {
+            logger.error("Failed to get fingerprint for peer {}", peerId, e);
+        }
+        return null;
+    }
+    
     public String getClientId() { return clientId; }
     public String getReceiverId() { return currentPeerId; }
 }

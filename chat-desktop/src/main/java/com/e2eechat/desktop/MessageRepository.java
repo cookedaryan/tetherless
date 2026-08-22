@@ -31,12 +31,10 @@ public class MessageRepository {
         try (Connection conn = DriverManager.getConnection(dbUrl);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
-            // Encrypt the content
             byte[] plaintext = content.getBytes(StandardCharsets.UTF_8);
             byte[] iv = AESUtils.generateIV();
             byte[] ciphertext = AESUtils.encrypt(plaintext, dbKey, iv);
             
-            // Concat IV and Ciphertext and Base64 encode
             ByteBuffer bb = ByteBuffer.allocate(iv.length + ciphertext.length);
             bb.put(iv);
             bb.put(ciphertext);
@@ -87,7 +85,6 @@ public class MessageRepository {
                             decodedContent = "[Error: Payload too short]";
                         }
                     } catch (IllegalArgumentException e) {
-                        // Fallback for previously unencrypted rows in dev DBs
                         decodedContent = encodedContent;
                     } catch (Exception e) {
                         logger.error("Failed to decrypt message content", e);
@@ -103,5 +100,26 @@ public class MessageRepository {
         
         Collections.reverse(messages);
         return messages;
+    }
+    
+    public List<String> getKnownPeers(String localClientId) {
+        String sql = "SELECT DISTINCT sender AS peer FROM messages WHERE receiver = ? " +
+                     "UNION SELECT DISTINCT receiver AS peer FROM messages WHERE sender = ?";
+        List<String> peers = new ArrayList<>();
+        
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, localClientId);
+            pstmt.setString(2, localClientId);
+            
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    peers.add(rs.getString("peer"));
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Failed to retrieve known peers", e);
+        }
+        return peers;
     }
 }
