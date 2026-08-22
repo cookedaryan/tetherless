@@ -68,7 +68,18 @@ public class Main {
         final int finalPort = port;
         
         JceKeyStoreManager keyStoreManager = new JceKeyStoreManager(configDir);
+        ProfileStore profileStore = new ProfileStore(configDir);
         boolean isFirstRun = !new File(configDir, "identity.p12").exists();
+
+        // The display name forms the first half of the peer id others route to, so it has to come
+        // from storage rather than being re-derived per launch. A profile written before the name
+        // was persisted has none, in which case ask for it once.
+        String storedName = profileStore.getDisplayName().orElse(null);
+        final IdentityDialog.Mode dialogMode = isFirstRun
+                ? IdentityDialog.Mode.FIRST_RUN
+                : (storedName == null
+                        ? IdentityDialog.Mode.UNLOCK_NEEDS_NAME
+                        : IdentityDialog.Mode.UNLOCK);
 
         SwingUtilities.invokeLater(() -> {
             try {
@@ -76,23 +87,23 @@ public class Main {
             } catch (Exception ignored) {}
             
             KeyPair identity = null;
-            String displayName = isFirstRun ? null : "Me";
+            String displayName = storedName;
             String fingerprint = null;
             char[] validPassphrase = null;
-            
+
             int attempts = 0;
             while (identity == null) {
-                IdentityDialog dialog = new IdentityDialog(null, isFirstRun);
+                IdentityDialog dialog = new IdentityDialog(null, dialogMode);
                 dialog.setVisible(true);
-                
+
                 char[] passphrase = dialog.getPassphrase();
                 if (passphrase == null) {
                     System.exit(0);
                 }
-                if (isFirstRun) {
+                if (dialog.getDisplayName() != null) {
                     displayName = dialog.getDisplayName();
                 }
-                
+
                 try {
                     identity = keyStoreManager.loadOrCreateIdentity(passphrase);
                     fingerprint = keyStoreManager.fingerprint(identity.getPublic());
@@ -111,6 +122,10 @@ public class Main {
                 }
             }
             
+            // Persist only after the passphrase has actually unlocked the identity, so a failed
+            // attempt cannot overwrite a good name.
+            profileStore.setDisplayName(displayName);
+
             String clientId = displayName + "@" + fingerprint.substring(0, 8);
             
             // Derive DB Key
