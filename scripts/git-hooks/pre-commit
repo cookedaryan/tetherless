@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# Rejects text files containing NUL bytes or a UTF-16 byte-order mark.
+#
+# Why: several files in this repository were silently corrupted by shell redirection that wrote
+# UTF-16LE instead of UTF-8 - context.md gained a UTF-16 line mid-file, and four GitHub API dumps
+# were committed as UTF-16 wholesale. None of it was visible in a normal diff. This catches the
+# class of mistake at the point it would enter history.
+#
+# Install (once per clone):
+#     git config core.hooksPath scripts/git-hooks
+#
+# Bypass for a genuinely-binary file: mark it `binary` in .gitattributes, which this hook honours.
+# As a last resort, `git commit --no-verify` skips the check entirely.
+
+set -u
+
+fail=0
+
+# --diff-filter=ACM: added, copied, modified. Deletions have no content to inspect.
+# -z plus a NUL-delimited read keeps paths with spaces intact.
+while IFS= read -r -d '' file; do
+    [ -f "$file" ] || continue
+
+    # Honour .gitattributes: anything declared binary is exempt by design.
+    if git check-attr binary -- "$file" | grep -q ': binary: set$'; then
+        continue
+    fi
+
+    # Inspect the staged blob, not the working tree, so partial staging is judged correctly.
+    # Counting NULs through `tr` avoids command substitution, which strips them and warns.
+    if [ "$(git show ":$file" 2>/dev/null | tr -dc '\000' | wc -c)" -gt 0 ]; then
+        echo "  $file contains NUL bytes (likely UTF-16 written by a shell redirect)"
+        fail=1
+        continue
+    fi
+
+    bom=$(git show ":$file" 2>/dev/null | head -c 2 | od -An -tx1 | tr -d ' \n')
+    if [ "$bom" = "fffe" ] || [ "$bom" = "feff" ]; then
+        echo "  $file starts with a UTF-16 byte-order mark"
+        fail=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
+
+if [ "$fail" -ne 0 ]; then
+    cat <<'MSG'
+
+pre-commit: refusing to commit UTF-16 / NUL-containing text.
+
+  On Windows, `cmd > file` and `cmd >> file` in PowerShell can write UTF-16LE.
+  Use  cmd | Out-File -Encoding utf8 file   or redirect from bash instead.
+
+  To convert an existing file:
+      iconv -f UTF-16 -t UTF-8 file > file.utf8 && mv file.utf8 file
+
+  If the file really is binary, mark it in .gitattributes.
+  To bypass this check: git commit --no-verify
+
+MSG
+    exit 1
+fi
+
+exit 0

@@ -35,7 +35,21 @@ The keystore password defaults to `changeit` and is read from
 `TETHERLESS_TRUSTSTORE_PASSWORD` (or the `tetherless.truststore.password` system property) if you
 set one; see `core-shared/.../network/TlsSupport.java`.
 
-### 2. Build
+### 2. Enable the commit hooks
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+One command, once per clone. The pre-commit hook refuses text files containing NUL bytes or a
+UTF-16 byte-order mark.
+
+This is not hypothetical housekeeping: several files in this repository were silently corrupted by
+shell redirection writing UTF-16LE instead of UTF-8. On Windows, `cmd > file` and `cmd >> file` in
+PowerShell can produce UTF-16, and the result does not look wrong in an editor. Prefer
+`cmd | Out-File -Encoding utf8 file`, or redirect from bash.
+
+### 3. Build
 
 ```bash
 ./gradlew build
@@ -44,7 +58,7 @@ set one; see `core-shared/.../network/TlsSupport.java`.
 Runs compilation, Checkstyle, SpotBugs (with find-sec-bugs), and the test suites across all four
 modules. Building `chat-mobile` additionally needs the Android SDK.
 
-### 3. Run
+### 4. Run
 
 Start the relay:
 
