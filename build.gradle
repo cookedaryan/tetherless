@@ -26,9 +26,8 @@ subprojects { project ->
 
     project.pluginManager.withPlugin('java') {
         project.java {
-            toolchain {
-                languageVersion = JavaLanguageVersion.of(17)
-            }
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
         }
         project.apply plugin: 'com.github.spotbugs'
         project.spotbugs {
@@ -50,3 +49,4 @@ subprojects { project ->
         options.compilerArgs << "-Xlint:all"
     }
 }
+

@@ -15,6 +15,15 @@ public class ChatWindow extends JFrame {
         setSize(400, 500);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                if (client != null) {
+                    client.disconnect();
+                }
+            }
+        });
+        
         chatArea = new JTextArea();
         chatArea.setEditable(false);
         add(new JScrollPane(chatArea), BorderLayout.CENTER);

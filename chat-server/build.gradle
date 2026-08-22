@@ -17,4 +17,6 @@ dependencies {
     implementation libs.logback.classic
     implementation project(':core-shared')
     testImplementation libs.junit
+    testImplementation libs.mockito.core
 }
+

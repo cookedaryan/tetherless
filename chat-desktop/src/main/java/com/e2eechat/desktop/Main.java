@@ -9,6 +9,11 @@ public class Main {
         String receiverId = args.length > 1 ? args[1] : "user2";
         
         ChatClient client = new ChatClient(clientId, receiverId);
+        
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            client.disconnect();
+        }));
+        
         client.connect("localhost", 8080);
         
         SwingUtilities.invokeLater(() -> {

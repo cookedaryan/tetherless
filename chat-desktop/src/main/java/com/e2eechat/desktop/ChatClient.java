@@ -42,6 +42,16 @@ import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatClient
                             if (window != null) {
                                 window.appendMessage(msg.getSenderId() + ": " + text);
                             }
+                        } else if (msg.getType() == com.e2eechat.core.models.MessageType.PING) {
+                            Message pongMsg = new com.e2eechat.core.models.MessageBuilder()
+                                    .setType(com.e2eechat.core.models.MessageType.PONG)
+                                    .setMessageId(java.util.UUID.randomUUID().toString())
+                                    .setTimestamp(System.currentTimeMillis())
+                                    .buildUnsigned();
+                            out.writeMessage(pongMsg);
+                        } else if (msg.getType() == com.e2eechat.core.models.MessageType.DISCONNECT) {
+                            logger.info("Server initiated disconnect");
+                            break;
                         }
                     }
                 } catch (Exception e) {
@@ -50,6 +60,22 @@ import org.slf4j.Logger; import org.slf4j.LoggerFactory; public class ChatClient
             }).start();
         } catch (Exception e) {
             logger.error("Error", e);
+        }
+    }
+
+    public void disconnect() {
+        if (out != null) {
+            try {
+                Message disconnectMsg = new com.e2eechat.core.models.MessageBuilder()
+                        .setType(com.e2eechat.core.models.MessageType.DISCONNECT)
+                        .setSenderId(clientId)
+                        .setMessageId(java.util.UUID.randomUUID().toString())
+                        .setTimestamp(System.currentTimeMillis())
+                        .buildUnsigned();
+                out.writeMessage(disconnectMsg);
+            } catch (Exception e) {
+                logger.warn("Error sending DISCONNECT", e);
+            }
         }
     }
 
