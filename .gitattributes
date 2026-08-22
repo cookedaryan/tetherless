@@ -1,0 +1,66 @@
+# Line-ending and diff policy.
+#
+# Without this file, line endings depend on each contributor's core.autocrlf, so the same edit can
+# produce a whole-file diff on someone else's machine. Text is normalised to LF in the repository
+# and checked out in the platform's native form; the exceptions below are files whose interpreter
+# dictates the ending, and binaries that must never be rewritten at all.
+
+# Default: let Git detect text and normalise it to LF on commit.
+* text=auto
+
+# --- Sources and configuration -------------------------------------------------------------
+# diff=java gives Git the Java hunk-header patterns, so diffs name the enclosing method.
+*.java          text diff=java
+*.gradle        text
+*.xml           text
+*.json          text
+*.md            text diff=markdown
+*.properties    text
+*.toml          text
+*.yml           text
+*.yaml          text
+*.txt           text
+*.pro           text
+.gitignore      text
+.gitattributes  text
+.editorconfig   text
+
+# --- Scripts: the interpreter decides ------------------------------------------------------
+# The Gradle wrapper is run by sh, which fails on CRLF ("bad interpreter").
+gradlew         text eol=lf
+*.sh            text eol=lf
+# cmd.exe wants CRLF.
+gradlew.bat     text eol=crlf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+# --- Binaries: never normalise or diff -----------------------------------------------------
+# gradle-wrapper.jar is the one that really matters: a single rewritten byte makes every build
+# on a fresh clone fail.
+*.jar           binary
+*.zip           binary
+*.class         binary
+*.war           binary
+*.apk           binary
+*.aab           binary
+*.so            binary
+*.dll           binary
+*.exe           binary
+
+# Keystores and databases: byte-exact or worthless.
+*.p12           binary
+*.jks           binary
+*.keystore      binary
+*.db            binary
+
+# Images and fonts.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.webp          binary
+*.ttf           binary
+*.otf           binary
+*.woff          binary
+*.woff2         binary
