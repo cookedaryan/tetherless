@@ -1,13 +1,17 @@
 package com.e2eechat.desktop;
 
+import com.e2eechat.core.crypto.DHUtils;
 import com.e2eechat.core.keys.JceKeyStoreManager;
 import com.e2eechat.core.session.SessionManager;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import javax.swing.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.Optional;
@@ -19,7 +23,6 @@ public class Main {
         String host = "localhost";
         int port = 8080;
         
-        // System property allows overriding config dir for running multiple clients on one machine
         String configDirPath = System.getProperty("tetherless.config.dir", 
                 new File(System.getProperty("user.home"), ".tetherless").getAbsolutePath());
         File configDir = new File(configDirPath);
@@ -30,7 +33,6 @@ public class Main {
         
         String dbPath = new File(configDir, "chat.db").getAbsolutePath();
         DatabaseHelper.initializeDatabase(dbPath);
-        MessageRepository messageRepository = new MessageRepository(dbPath);
         
         File configFile = new File(configDir, "config.properties");
         if (configFile.exists()) {
@@ -45,7 +47,6 @@ public class Main {
             }
         }
         
-        // CLI args take precedence for host/port
         if (args.length > 0) host = args[0];
         if (args.length > 1) {
             try { port = Integer.parseInt(args[1]); } catch (NumberFormatException ignored) {}
@@ -65,6 +66,7 @@ public class Main {
             KeyPair identity = null;
             String displayName = isFirstRun ? null : "Me";
             String fingerprint = null;
+            char[] validPassphrase = null;
             
             int attempts = 0;
             while (identity == null) {
@@ -82,6 +84,7 @@ public class Main {
                 try {
                     identity = keyStoreManager.loadOrCreateIdentity(passphrase);
                     fingerprint = keyStoreManager.fingerprint(identity.getPublic());
+                    validPassphrase = passphrase;
                 } catch (Exception e) {
                     attempts++;
                     if (attempts >= 5) {
@@ -96,8 +99,22 @@ public class Main {
                 }
             }
             
-            // Client ID derived from display name + fingerprint
             String clientId = displayName + "#" + fingerprint.substring(0, 8);
+            
+            // Derive DB Key
+            SecretKey dbKey = null;
+            try {
+                byte[] ikm = new String(validPassphrase).getBytes(StandardCharsets.UTF_8);
+                byte[] salt = clientId.getBytes(StandardCharsets.UTF_8);
+                byte[] info = "tetherless-db-key".getBytes(StandardCharsets.UTF_8);
+                byte[] keyBytes = DHUtils.hkdfSha256(ikm, salt, info, 32);
+                dbKey = new SecretKeySpec(keyBytes, "AES");
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(null, "Failed to derive DB key. Exiting.");
+                System.exit(1);
+            }
+            
+            MessageRepository messageRepository = new MessageRepository(dbPath, dbKey);
             
             Function<String, PublicKey> peerKeyLookup = senderId -> {
                 try {
