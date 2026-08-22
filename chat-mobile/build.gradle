@@ -3,24 +3,38 @@ plugins {
 }
 
 android {
-    namespace 'com.e2eechat.mobile'
-    compileSdk 34
+    // Assignment syntax throughout: Gradle 10 removes the space-assignment form
+    // ('propName value') for Gradle-generated properties in the Groovy DSL.
+    namespace = 'com.e2eechat.mobile'
+    compileSdk = 34
 
     defaultConfig {
-        applicationId "com.e2eechat.mobile"
-        minSdk 24
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        applicationId = "com.e2eechat.mobile"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+        
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += ["room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     buildFeatures {
-        viewBinding true
+        viewBinding = true
+    }
+    
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
     }
 }
 
@@ -34,4 +48,9 @@ dependencies {
     annotationProcessor libs.room.compiler
     implementation libs.lifecycle.viewmodel
     implementation libs.lifecycle.livedata
+    
+    androidTestImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:core:1.5.0'
+    androidTestImplementation 'androidx.arch.core:core-testing:2.2.0'
 }

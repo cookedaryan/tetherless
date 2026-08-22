@@ -2,7 +2,9 @@ package com.e2eechat.core.crypto;
 
 import org.junit.Test;
 import java.security.KeyPair;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class DHUtilsTest {
 

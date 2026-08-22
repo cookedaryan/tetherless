@@ -71,13 +71,19 @@ public class ServerConfig {
 
     private String getString(Properties props, String propKey, String envKey, String defaultValue) {
         String envVal = System.getenv(envKey);
-        if (envVal != null && !envVal.isEmpty()) return envVal;
+        if (envVal != null && !envVal.isEmpty()) {
+            return envVal;
+        }
         
         String sysVal = System.getProperty(propKey);
-        if (sysVal != null && !sysVal.isEmpty()) return sysVal;
+        if (sysVal != null && !sysVal.isEmpty()) {
+            return sysVal;
+        }
         
         String propVal = props.getProperty(propKey);
-        if (propVal != null && !propVal.isEmpty()) return propVal;
+        if (propVal != null && !propVal.isEmpty()) {
+            return propVal;
+        }
         
         return defaultValue;
     }

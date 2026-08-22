@@ -50,7 +50,9 @@ public class ClientSession implements Runnable {
     }
 
     public void enqueueFrame(byte[] frame) {
-        if (!running) return;
+        if (!running) {
+            return;
+        }
         
         Metrics.updateQueueHighWaterMark(outboundQueue.size());
         
@@ -89,7 +91,9 @@ public class ClientSession implements Runnable {
     }
 
     public void disconnect() {
-        if (!running) return;
+        if (!running) {
+            return;
+        }
         
         int attempts = 0;
         while (!outboundQueue.isEmpty() && attempts < 20) {
@@ -198,7 +202,9 @@ public class ClientSession implements Runnable {
                 if (message.getType() == MessageType.HELLO) {
                     if (clientId == null) {
                         clientId = message.getSenderId();
-                        if (writerThread != null) writerThread.setName("Writer-" + Redact.id(clientId));
+                        if (writerThread != null) {
+                            writerThread.setName("Writer-" + Redact.id(clientId));
+                        }
                         boolean registered = registry.register(clientId, this);
                         if (!registered) {
                             logger.warn("reject-duplicate: id={}", Redact.id(clientId));
@@ -206,17 +212,19 @@ public class ClientSession implements Runnable {
                                     .setType(MessageType.ERROR)
                                     .setSenderId("SERVER")
                                     .setReceiverId(clientId)
+                                    .setPayload("ID_TAKEN".getBytes())
                                     .setMessageId(UUID.randomUUID().toString())
-                                    .setPayload("Duplicate client ID".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                                     .setTimestamp(System.currentTimeMillis())
                                     .buildUnsigned();
-                            sendMessage(errorMsg);
+                            enqueueFrame(MessageCodec.encode(errorMsg));
                             break;
                         }
                         
                         handshakeComplete = true;
                         socket.setSoTimeout(IDLE_TIMEOUT_MS);
                         logger.info("hello: id={}", Redact.id(clientId));
+                    } else {
+                        routeFrame(message.getReceiverId(), frame);
                     }
                 } else if (message.getType() == MessageType.DISCONNECT) {
                     logger.info("disconnect: id={}", Redact.id(clientId));

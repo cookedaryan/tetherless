@@ -10,7 +10,6 @@ import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.Certificate;
-import java.security.cert.CertificateFactory;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.Optional;
@@ -40,7 +39,28 @@ public class JceKeyStoreManager implements IdentityKeyStore {
     public KeyPair loadOrCreateIdentity(char[] passphrase) throws Exception {
         File ksFile = new File(configDir, "identity.p12");
         if (!ksFile.exists()) {
-            throw new Exception("KeyStore does not exist. Must create first via CLI/ProcessBuilder in Phase 1.");
+            // Generate using keytool via ProcessBuilder
+            String pass = new String(passphrase);
+            ProcessBuilder pb = new ProcessBuilder(
+                "keytool", "-genkeypair",
+                "-alias", "myidentity",
+                "-keyalg", "RSA",
+                "-keysize", "2048",
+                "-validity", "3650",
+                "-storetype", "PKCS12",
+                "-keystore", ksFile.getAbsolutePath(),
+                "-storepass", pass,
+                "-keypass", pass,
+                "-dname", "CN=TetherlessUser, O=Tetherless, C=US"
+            );
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            int exitCode = p.waitFor();
+            if (exitCode != 0) {
+                java.util.Scanner s = new java.util.Scanner(p.getInputStream()).useDelimiter("\\A");
+                String result = s.hasNext() ? s.next() : "";
+                throw new Exception("Keytool failed with code " + exitCode + ": " + result);
+            }
         }
         
         KeyStore ks = KeyStore.getInstance("PKCS12");
@@ -82,7 +102,9 @@ public class JceKeyStoreManager implements IdentityKeyStore {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < hash.length; i++) {
             sb.append(String.format("%02X", hash[i]));
-            if (i < hash.length - 1 && i % 2 != 0) sb.append(":");
+            if (i < hash.length - 1 && i % 2 != 0) {
+                sb.append(":");
+            }
         }
         return sb.toString();
     }

@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">E2EE Chat</string>
+    <string name="start_chat">Start secure chat</string>
+    <string name="peer_id_hint">Enter Peer ID</string>
+    <string name="message_hint">Type a message...</string>
+    <string name="send">Send</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_connecting">Connecting...</string>
+    <string name="status_connected">Connected to %1$s</string>
+    <string name="status_key_changed">WARNING: Key Changed! Verify Safety Number.</string>
 </resources>

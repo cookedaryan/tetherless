@@ -1,4 +1,4 @@
-package com.e2eechat.desktop;
+package com.e2eechat.core.network;
 
 public enum ConnectionState {
     DISCONNECTED,

@@ -1,4 +1,5 @@
 [versions]
+flatlaf = "3.4.1"
 slf4j = "2.0.12"
 logback = "1.5.0"
 junit = "4.13.2"
@@ -12,6 +13,7 @@ assertj = "3.25.3"
 constraintlayout = "2.1.4"
 
 [libraries]
+flatlaf = { module = "com.formdev:flatlaf", version.ref = "flatlaf" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 slf4j-android = { module = "org.slf4j:slf4j-android", version = "1.7.36" }

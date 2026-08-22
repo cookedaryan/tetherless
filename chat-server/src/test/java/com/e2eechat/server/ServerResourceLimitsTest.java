@@ -1,5 +1,6 @@
 package com.e2eechat.server;
 
+import com.e2eechat.core.network.TlsSupport;
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
 import com.e2eechat.core.models.MessageType;
@@ -9,13 +10,14 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class ServerResourceLimitsTest {
 
@@ -52,25 +54,7 @@ public class ServerResourceLimitsTest {
     }
 
     private Socket createSocket() throws Exception {
-        java.security.KeyStore trustStore = java.security.KeyStore.getInstance("PKCS12");
-        try (java.io.InputStream tsIs = getClass().getClassLoader().getResourceAsStream("dev-keystore.p12")) {
-            if (tsIs == null) {
-                try (java.io.FileInputStream fis = new java.io.FileInputStream("chat-server/src/main/resources/dev-keystore.p12")) {
-                    trustStore.load(fis, "changeit".toCharArray());
-                }
-            } else {
-                trustStore.load(tsIs, "changeit".toCharArray());
-            }
-        }
-        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-        javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLSv1.3");
-        sslContext.init(null, tmf.getTrustManagers(), null);
-        javax.net.ssl.SSLSocketFactory factory = sslContext.getSocketFactory();
-        javax.net.ssl.SSLSocket sslSocket = (javax.net.ssl.SSLSocket) factory.createSocket("127.0.0.1", port);
-        sslSocket.setEnabledProtocols(new String[]{"TLSv1.3"});
-        sslSocket.startHandshake();
-        return sslSocket;
+        return TlsSupport.connectPinned("127.0.0.1", port);
     }
 
     private void sendHello(FrameWriter w, String senderId) throws Exception {

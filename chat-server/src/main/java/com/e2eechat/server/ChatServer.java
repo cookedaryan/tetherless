@@ -181,7 +181,9 @@ public class ChatServer {
     }
 
     public void shutdown() {
-        if (!running) return;
+        if (!running) {
+            return;
+        }
         running = false;
         logger.info("Shutting down ChatServer...");
 

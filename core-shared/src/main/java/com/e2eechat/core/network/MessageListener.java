@@ -1,4 +1,4 @@
-package com.e2eechat.desktop;
+package com.e2eechat.core.network;
 
 import com.e2eechat.core.models.Message;
 

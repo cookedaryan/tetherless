@@ -6,7 +6,8 @@ import com.e2eechat.core.session.SessionManager;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
-import javax.swing.*;
+import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
@@ -25,10 +26,17 @@ public class Main {
         
         String configDirPath = System.getProperty("tetherless.config.dir", 
                 new File(System.getProperty("user.home"), ".tetherless").getAbsolutePath());
+        if (configDirPath.startsWith("\"") && configDirPath.endsWith("\"")) {
+            configDirPath = configDirPath.substring(1, configDirPath.length() - 1);
+        }
         File configDir = new File(configDirPath);
         
         if (!configDir.exists()) {
-            configDir.mkdirs();
+            if (!configDir.mkdirs()) {
+                System.err.println("Failed to create config directory: " + configDir.getAbsolutePath());
+                JOptionPane.showMessageDialog(null, "Failed to create config directory: " + configDir.getAbsolutePath());
+                System.exit(1);
+            }
         }
         
         String dbPath = new File(configDir, "chat.db").getAbsolutePath();
@@ -41,13 +49,17 @@ public class Main {
                 props.load(fis);
                 host = props.getProperty("host", host);
                 String portStr = props.getProperty("port");
-                if (portStr != null) port = Integer.parseInt(portStr);
+                if (portStr != null) {
+                    port = Integer.parseInt(portStr);
+                }
             } catch (Exception e) {
                 System.err.println("Failed to load config properties: " + e.getMessage());
             }
         }
         
-        if (args.length > 0) host = args[0];
+        if (args.length > 0) {
+            host = args[0];
+        }
         if (args.length > 1) {
             try { port = Integer.parseInt(args[1]); } catch (NumberFormatException ignored) {}
         }
@@ -60,7 +72,7 @@ public class Main {
 
         SwingUtilities.invokeLater(() -> {
             try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                com.formdev.flatlaf.FlatLightLaf.setup();
             } catch (Exception ignored) {}
             
             KeyPair identity = null;
@@ -99,7 +111,7 @@ public class Main {
                 }
             }
             
-            String clientId = displayName + "#" + fingerprint.substring(0, 8);
+            String clientId = displayName + "@" + fingerprint.substring(0, 8);
             
             // Derive DB Key
             SecretKey dbKey = null;

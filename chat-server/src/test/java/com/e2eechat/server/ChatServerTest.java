@@ -13,7 +13,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.ByteBuffer;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 public class ChatServerTest {
 
@@ -111,7 +113,9 @@ public class ChatServerTest {
         Message msg = alice2.awaitMessage(1000);
         assertNotNull(msg);
         assertEquals(MessageType.ERROR, msg.getType());
-        assertEquals("Duplicate client ID", new String(msg.getPayload()));
+        // Machine-readable code, matching RECIPIENT_OFFLINE / SERVER_FULL; the old prose
+        // expectation had gone stale.
+        assertEquals("ID_TAKEN", new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
         
         alice2.assertDisconnected();
         alice1.close();

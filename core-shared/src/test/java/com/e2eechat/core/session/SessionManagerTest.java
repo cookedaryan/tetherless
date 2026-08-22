@@ -9,7 +9,8 @@ import org.junit.Test;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
 public class SessionManagerTest {
 

@@ -6,3 +6,10 @@ local.properties
 *.db
 *.jks
 *.p12
+
+# Runtime logs - regenerated on every run, never source
+logs/
+*.log
+
+# Stray compiled classes from ad-hoc javac runs
+*.class

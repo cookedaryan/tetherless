@@ -1,20 +1,20 @@
 package com.e2eechat.server;
 
+import com.e2eechat.core.network.TlsSupport;
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
 import com.e2eechat.core.models.MessageType;
 import com.e2eechat.core.protocol.FrameReader;
 import com.e2eechat.core.protocol.FrameWriter;
-import com.e2eechat.core.protocol.MessageCodec;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.net.Socket;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertTrue;
 
 public class ServerRoutingIntegrityTest {
 
@@ -45,25 +45,7 @@ public class ServerRoutingIntegrityTest {
     }
 
     private Socket createSocket() throws Exception {
-        java.security.KeyStore trustStore = java.security.KeyStore.getInstance("PKCS12");
-        try (java.io.InputStream tsIs = getClass().getClassLoader().getResourceAsStream("dev-keystore.p12")) {
-            if (tsIs == null) {
-                try (java.io.FileInputStream fis = new java.io.FileInputStream("chat-server/src/main/resources/dev-keystore.p12")) {
-                    trustStore.load(fis, "changeit".toCharArray());
-                }
-            } else {
-                trustStore.load(tsIs, "changeit".toCharArray());
-            }
-        }
-        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-        javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLSv1.3");
-        sslContext.init(null, tmf.getTrustManagers(), null);
-        javax.net.ssl.SSLSocketFactory factory = sslContext.getSocketFactory();
-        javax.net.ssl.SSLSocket sslSocket = (javax.net.ssl.SSLSocket) factory.createSocket("127.0.0.1", port);
-        sslSocket.setEnabledProtocols(new String[]{"TLSv1.3"});
-        sslSocket.startHandshake();
-        return sslSocket;
+        return TlsSupport.connectPinned("127.0.0.1", port);
     }
 
     private void sendHello(FrameWriter w, String senderId) throws Exception {
@@ -130,10 +112,10 @@ public class ServerRoutingIntegrityTest {
         FrameReader bobReader = new FrameReader(bobSocket.getInputStream());
         sendHello(bobWriter, "slow_bob");
 
-        // Alice connects
+        // Alice connects. Deliberately no reader: the scenario needs Alice to leave the
+        // RECIPIENT_OFFLINE replies undrained so her own outbound queue backs up too.
         Socket aliceSocket = createSocket();
         FrameWriter aliceWriter = new FrameWriter(aliceSocket.getOutputStream());
-        FrameReader aliceReader = new FrameReader(aliceSocket.getInputStream());
         sendHello(aliceWriter, "alice");
 
         Thread.sleep(100);

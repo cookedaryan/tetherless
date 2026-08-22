@@ -1,5 +1,6 @@
 package com.e2eechat.server;
 
+import com.e2eechat.core.network.TlsSupport;
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
 import com.e2eechat.core.models.MessageType;
@@ -9,15 +10,17 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class ChatServerLifecycleTest {
 
@@ -50,25 +53,7 @@ public class ChatServerLifecycleTest {
     }
 
     private Socket createSocket() throws Exception {
-        java.security.KeyStore trustStore = java.security.KeyStore.getInstance("PKCS12");
-        try (java.io.InputStream tsIs = getClass().getClassLoader().getResourceAsStream("dev-keystore.p12")) {
-            if (tsIs == null) {
-                try (java.io.FileInputStream fis = new java.io.FileInputStream("chat-server/src/main/resources/dev-keystore.p12")) {
-                    trustStore.load(fis, "changeit".toCharArray());
-                }
-            } else {
-                trustStore.load(tsIs, "changeit".toCharArray());
-            }
-        }
-        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-        javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLSv1.3");
-        sslContext.init(null, tmf.getTrustManagers(), null);
-        javax.net.ssl.SSLSocketFactory factory = sslContext.getSocketFactory();
-        javax.net.ssl.SSLSocket sslSocket = (javax.net.ssl.SSLSocket) factory.createSocket("127.0.0.1", port);
-        sslSocket.setEnabledProtocols(new String[]{"TLSv1.3"});
-        sslSocket.startHandshake();
-        return sslSocket;
+        return TlsSupport.connectPinned("127.0.0.1", port);
     }
 
     private Message createHello(String senderId) {
@@ -97,7 +82,9 @@ public class ChatServerLifecycleTest {
         // Second connection should receive an ERROR message and get disconnected
         Message msg = r2.readMessage();
         assertEquals(MessageType.ERROR, msg.getType());
-        assertArrayEquals("Duplicate client ID".getBytes(), msg.getPayload());
+        // The server emits machine-readable codes (ID_TAKEN, RECIPIENT_OFFLINE, SERVER_FULL),
+        // not prose. This expectation had gone stale against that convention.
+        assertArrayEquals("ID_TAKEN".getBytes(StandardCharsets.UTF_8), msg.getPayload());
         
         try {
             r2.readMessage();

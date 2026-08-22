@@ -1,8 +1,16 @@
 package com.e2eechat.desktop;
 
-import javax.swing.*;
-import java.awt.*;
-import java.io.File;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JPasswordField;
+import javax.swing.JTextField;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
 
 public class IdentityDialog extends JDialog {
     private String displayName = null;

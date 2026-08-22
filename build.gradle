@@ -1,5 +1,8 @@
 plugins {
-    id 'com.android.application' version '8.1.0' apply false
+    // AGP 8.1.0 declared client module dependencies internally, which Gradle 9.0 removes. The
+    // warning came from inside the plugin, not from this build's scripts, so a version bump is
+    // the only fix.
+    id 'com.android.application' version '8.11.1' apply false
     id "com.github.spotbugs" version "6.0.7" apply false
 }
 
@@ -31,14 +34,20 @@ subprojects { project ->
         }
         project.apply plugin: 'com.github.spotbugs'
         project.spotbugs {
-            toolVersion = "4.8.6"
+            // 4.8.6 bundles an ASM that cannot read the class files of a current JDK: analysis
+            // aborted with "Unsupported class file major version 68" on java/lang/Object itself.
+            // Keep this ahead of the JDK the build runs on.
+            toolVersion = "4.9.6"
             ignoreFailures = false
-            reportLevel = 'high'
+            // A real enum instance, not the string 'high': Gradle 10 removes String-to-enum
+            // coercion for rich properties. valueOf() is used because Groovy resolves the bare
+            // `Confidence.HIGH` here as a nested class rather than the constant.
+            reportLevel = com.github.spotbugs.snom.Confidence.valueOf('HIGH')
             excludeFilter = rootProject.file('config/spotbugs/exclude.xml')
         }
         project.dependencies {
-            spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.12.0'
-            compileOnly 'com.github.spotbugs:spotbugs-annotations:4.8.6'
+            spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0'
+            compileOnly 'com.github.spotbugs:spotbugs-annotations:4.9.6'
         }
     }
 
@@ -46,6 +55,7 @@ subprojects { project ->
         if (project.pluginManager.hasPlugin('java')) {
             options.release = 8
         }
+        options.encoding = 'UTF-8'
         options.compilerArgs << "-Xlint:all"
     }
 }

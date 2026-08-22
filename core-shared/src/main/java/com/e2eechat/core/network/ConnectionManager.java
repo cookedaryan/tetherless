@@ -1,4 +1,4 @@
-package com.e2eechat.desktop;
+package com.e2eechat.core.network;
 
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
@@ -8,22 +8,23 @@ import com.e2eechat.core.protocol.FrameWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.*;
-import java.io.FileInputStream;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
-import java.io.InputStream;
-import java.security.KeyStore;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConnectionManager {
     private static final Logger logger = LoggerFactory.getLogger(ConnectionManager.class);
     
-    private final String host;
-    private final int port;
-    private final String clientId;
-    private final MessageListener listener;
+    protected final String host;
+    protected final int port;
+    protected final String clientId;
+    protected final MessageListener listener;
     
     private SSLSocket socket;
     private FrameReader in;
@@ -36,11 +37,7 @@ public class ConnectionManager {
     private volatile ConnectionState state = ConnectionState.DISCONNECTED;
     private final AtomicBoolean running = new AtomicBoolean(false);
     
-    private final ExecutorService reconnectExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "Reconnect-Thread");
-        t.setDaemon(true);
-        return t;
-    });
+    private ExecutorService reconnectExecutor;
 
     public ConnectionManager(String host, int port, String clientId, MessageListener listener) {
         this.host = host;
@@ -60,6 +57,13 @@ public class ConnectionManager {
 
     public void start() {
         if (running.compareAndSet(false, true)) {
+            if (reconnectExecutor == null || reconnectExecutor.isShutdown()) {
+                reconnectExecutor = Executors.newSingleThreadExecutor(r -> {
+                    Thread t = new Thread(r, "Reconnect-Thread");
+                    t.setDaemon(true);
+                    return t;
+                });
+            }
             reconnectExecutor.submit(this::connectLoop);
         }
     }
@@ -81,7 +85,9 @@ public class ConnectionManager {
                 waitForDisconnect();
                 
             } catch (Exception e) {
-                if (!running.get()) break;
+                if (!running.get()) {
+                    break;
+                }
                 
                 long backoff = Math.min((1000L << attempt), MAX_BACKOFF);
                 long jitter = (long) (Math.random() * backoff);
@@ -94,36 +100,17 @@ public class ConnectionManager {
                     break;
                 }
                 
-                if (attempt < 10) attempt++;
+                if (attempt < 10) {
+                    attempt++;
+                }
             }
         }
     }
 
-    private void connectInternal() throws Exception {
-        // We assume dev-keystore.p12 for TLS pinning in local dev.
-        // In a real production app, this would use the system default CAs + Let's Encrypt.
-        KeyStore trustStore = KeyStore.getInstance("PKCS12");
-        try (InputStream tsIs = getClass().getClassLoader().getResourceAsStream("dev-keystore.p12")) {
-            if (tsIs == null) {
-                try (FileInputStream fis = new FileInputStream("../chat-server/src/main/resources/dev-keystore.p12")) {
-                    trustStore.load(fis, "changeit".toCharArray());
-                } catch (Exception e) {
-                    try (FileInputStream fis = new FileInputStream("src/main/resources/dev-keystore.p12")) {
-                        trustStore.load(fis, "changeit".toCharArray());
-                    }
-                }
-            } else {
-                trustStore.load(tsIs, "changeit".toCharArray());
-            }
-        }
-        
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-        
-        SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
-        sslContext.init(null, tmf.getTrustManagers(), null);
-        
-        SSLSocketFactory factory = sslContext.getSocketFactory();
+    protected void connectInternal() throws Exception {
+        // Pins the relay's development certificate. A production deployment would trust the system
+        // CAs plus its own issuer instead; see TlsSupport for how the store is located.
+        SSLSocketFactory factory = TlsSupport.clientContext().getSocketFactory();
         socket = (SSLSocket) factory.createSocket(host, port);
         socket.setEnabledProtocols(new String[]{"TLSv1.3"});
         socket.startHandshake();
@@ -194,9 +181,11 @@ public class ConnectionManager {
         }
     }
 
-    private void waitForDisconnect() {
+    protected void waitForDisconnect() {
         try {
-            if (readerThread != null) readerThread.join();
+            if (readerThread != null) {
+                readerThread.join();
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -210,7 +199,9 @@ public class ConnectionManager {
         } catch (IOException e) {
             // Ignored
         }
-        if (writerThread != null) writerThread.interrupt();
+        if (writerThread != null) {
+            writerThread.interrupt();
+        }
     }
 
     public void sendMessage(Message msg) {

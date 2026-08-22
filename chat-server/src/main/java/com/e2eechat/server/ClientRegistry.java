@@ -35,7 +35,9 @@ public class ClientRegistry {
      * @param expectedSession The session that is requesting to be unregistered.
      */
     public void unregister(String clientId, ClientSession expectedSession) {
-        if (clientId == null) return;
+        if (clientId == null) {
+            return;
+        }
         boolean removed = clients.remove(clientId, expectedSession);
         if (removed) {
             logger.info("Client unregistered: {}", Redact.id(clientId));
@@ -46,7 +48,9 @@ public class ClientRegistry {
      * Looks up a client session by ID.
      */
     public ClientSession lookup(String clientId) {
-        if (clientId == null) return null;
+        if (clientId == null) {
+            return null;
+        }
         return clients.get(clientId);
     }
 

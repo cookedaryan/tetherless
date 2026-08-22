@@ -1,163 +1,321 @@
 package com.e2eechat.desktop;
 
 import com.e2eechat.core.models.Message;
-import com.e2eechat.core.models.MessageType;
+import com.e2eechat.core.network.ConnectionState;
+import com.e2eechat.core.network.MessageListener;
+import com.e2eechat.core.network.SessionStateListener;
 import com.e2eechat.core.session.Session;
+import com.e2eechat.desktop.ui.Avatars;
+import com.e2eechat.desktop.ui.Composer;
+import com.e2eechat.desktop.ui.IconButton;
+import com.e2eechat.desktop.ui.TgIcons;
+import com.e2eechat.desktop.ui.Theme;
+import com.e2eechat.desktop.ui.TranscriptPanel;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.ActionEvent;
+import javax.swing.BorderFactory;
+import javax.swing.Icon;
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JSplitPane;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+import javax.swing.Timer;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+/**
+ * The main Telegram-style window: chat list on the left, transcript and composer on the right.
+ *
+ * <p>Assembles {@link ConversationListPanel}, {@link TranscriptPanel} and {@link Composer}, and
+ * translates protocol events into UI state. Composing stays disabled until the session for the open
+ * conversation reaches {@link Session.State#ESTABLISHED} — there is deliberately no plaintext
+ * fallback, so a failed handshake means no send rather than an unencrypted send.
+ */
 public class ChatWindow extends JFrame implements MessageListener, SessionStateListener {
 
+    /** A typing notice from a peer expires if they go quiet, matching Telegram's own timeout. */
+    private static final int TYPING_EXPIRY_MS = 6000;
+
     private final ChatClient client;
-    
-    private final JList<ChatMessage> chatList;
-    private final DefaultListModel<ChatMessage> chatModel;
-    private final JTextField inputField;
-    private final JButton sendButton;
-    private final JLabel headerLabel;
+    private final String ownFingerprint;
+
+    private final ConversationListPanel sidebar;
+    private final ChatHeader header;
     private final JPanel rightPanel;
+    private final Composer composer;
+
+    private TranscriptPanel transcript;
+    private JComponent emptyState;
+    private final Timer typingExpiry;
 
     public ChatWindow(ChatClient client, String fingerprint) {
         this.client = client;
-        
-        setTitle("E2EE Chat - " + client.getClientId());
-        setSize(800, 600);
+        this.ownFingerprint = fingerprint;
+
+        setTitle("Tetherless");
+        setSize(1080, 720);
+        setMinimumSize(new Dimension(760, 520));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        
-        ConversationListPanel leftPanel = new ConversationListPanel(client, this::onConversationSelected);
-        splitPane.setLeftComponent(leftPanel);
-        
+        setLocationRelativeTo(null);
+
+        sidebar = new ConversationListPanel(client, this::onConversationSelected);
+        header = new ChatHeader();
+        composer = new Composer();
+
+        composer.setOnSend(this::onSend);
+        composer.setOnTypingChanged(this::onLocalTypingChanged);
+        composer.setOnAttach(() -> JOptionPane.showMessageDialog(this,
+                "File attachments are not implemented yet.\n"
+                        + "Sending a file needs a chunked, separately-keyed transfer that the relay "
+                        + "does not support today.",
+                "Attachments", JOptionPane.INFORMATION_MESSAGE));
+
+        emptyState = TranscriptPanel.emptyState("Select a chat to start messaging");
+
         rightPanel = new JPanel(new BorderLayout());
-        
-        headerLabel = new JLabel("Select a conversation to start");
-        headerLabel.setOpaque(true);
-        headerLabel.setBackground(Color.LIGHT_GRAY);
-        headerLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 14));
-        headerLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        headerLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        rightPanel.add(headerLabel, BorderLayout.NORTH);
-        
-        chatModel = new DefaultListModel<>();
-        chatList = new JList<>(chatModel);
-        chatList.setCellRenderer(new MessageBubbleRenderer(client.getClientId()));
-        chatList.setBackground(new Color(240, 240, 240));
-        
-        rightPanel.add(new JScrollPane(chatList), BorderLayout.CENTER);
-        
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        inputField = new JTextField();
-        inputField.setEnabled(false);
-        bottomPanel.add(inputField, BorderLayout.CENTER);
-        
-        sendButton = new JButton("Send");
-        sendButton.setEnabled(false);
-        bottomPanel.add(sendButton, BorderLayout.EAST);
-        
-        rightPanel.add(bottomPanel, BorderLayout.SOUTH);
-        
-        splitPane.setRightComponent(rightPanel);
-        add(splitPane);
-        
-        Action sendAction = new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                String text = inputField.getText().trim();
-                if (!text.isEmpty()) {
-                    client.sendMessage(text);
-                    inputField.setText("");
-                    
-                    // Add local message immediately
-                    chatModel.addElement(new ChatMessage(client.getClientId(), client.getReceiverId(), text, System.currentTimeMillis()));
-                    scrollToBottom();
-                }
+        rightPanel.add(header, BorderLayout.NORTH);
+        rightPanel.add(emptyState, BorderLayout.CENTER);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, sidebar, rightPanel);
+        split.setDividerSize(0);
+        split.setBorder(null);
+        split.setResizeWeight(0);
+        add(split);
+
+        header.setComposerVisible(false);
+
+        typingExpiry = new Timer(TYPING_EXPIRY_MS, e -> {
+            if (transcript != null) {
+                transcript.setTyping(false);
             }
-        };
-        inputField.addActionListener(sendAction);
-        sendButton.addActionListener(sendAction);
-        
+        });
+        typingExpiry.setRepeats(false);
+
+        Theme.addListener(this::applyTheme);
+        applyTheme();
+
         client.addMessageListener(this);
     }
-    
+
+    private void applyTheme() {
+        rightPanel.setBackground(Theme.chatBg());
+        getContentPane().setBackground(Theme.chatBg());
+        repaint();
+    }
+
+    // -------------------------------------------------------- conversation switch
+
     private void onConversationSelected(String peerId) {
-        client.startSecureChat(peerId); // Initiates or resumes Handshake
-        
-        headerLabel.setText("Connecting to " + peerId + "...");
-        headerLabel.setBackground(Color.LIGHT_GRAY);
-        inputField.setEnabled(false);
-        sendButton.setEnabled(false);
-        
-        chatModel.clear();
-        
-        SwingWorker<List<ChatMessage>, Void> worker = new SwingWorker<List<ChatMessage>, Void>() {
+        header.setPeer(peerId);
+        header.setStatus("connecting…", Theme.textSecondary(), false);
+        header.setComposerVisible(true);
+        composer.setComposingEnabled(false);
+        composer.clearReply();
+
+        TranscriptPanel fresh = new TranscriptPanel(client.getClientId());
+        fresh.setOnReply(this::onReplyRequested);
+        swapCentre(fresh);
+        transcript = fresh;
+
+        client.startSecureChat(peerId);
+
+        new SwingWorker<List<ChatMessage>, Void>() {
             @Override
             protected List<ChatMessage> doInBackground() {
-                return client.getMessageRepository().getMessages(client.getClientId(), peerId, 50);
+                List<ChatMessage> history = client.getMessageRepository()
+                        .getMessages(client.getClientId(), peerId, 200);
+                client.getMessageRepository().markConversationRead(client.getClientId(), peerId);
+                return history;
             }
+
             @Override
             protected void done() {
                 try {
-                    List<ChatMessage> history = get();
-                    for (ChatMessage m : history) {
-                        chatModel.addElement(m);
+                    if (transcript != fresh) {
+                        return; // The user moved on before the history arrived.
                     }
-                    scrollToBottom();
-                } catch (Exception ignored) {}
+                    fresh.setHistory(get());
+                    sidebar.clearUnread(peerId);
+                    // Tell the peer their messages have been seen.
+                    client.sendReadReceipt(peerId);
+                } catch (Exception ignored) {
+                    // History is best-effort; an empty transcript is preferable to a crash.
+                }
             }
-        };
-        worker.execute();
+        }.execute();
+
+        composer.focusInput();
     }
-    
-    private void scrollToBottom() {
-        SwingUtilities.invokeLater(() -> {
-            int lastIndex = chatList.getModel().getSize() - 1;
-            if (lastIndex >= 0) {
-                chatList.ensureIndexIsVisible(lastIndex);
-            }
-        });
+
+    private void swapCentre(JComponent centre) {
+        if (emptyState != null) {
+            rightPanel.remove(emptyState);
+            emptyState = null;
+        }
+        BorderLayout layout = (BorderLayout) rightPanel.getLayout();
+        java.awt.Component existing = layout.getLayoutComponent(BorderLayout.CENTER);
+        if (existing != null) {
+            rightPanel.remove(existing);
+        }
+        java.awt.Component south = layout.getLayoutComponent(BorderLayout.SOUTH);
+        if (south == null) {
+            rightPanel.add(composer, BorderLayout.SOUTH);
+        }
+        rightPanel.add(centre, BorderLayout.CENTER);
+        rightPanel.revalidate();
+        rightPanel.repaint();
     }
+
+    // ------------------------------------------------------------------ sending
+
+    private void onSend(String text) {
+        String peerId = client.getReceiverId();
+        if (peerId == null || transcript == null) {
+            return;
+        }
+        ChatMessage replyTo = composer.getReplyTarget();
+        String messageId = client.sendMessage(text, replyTo);
+        if (messageId == null) {
+            return;
+        }
+
+        ChatMessage sent = new ChatMessage(
+                messageId, client.getClientId(), peerId, text, System.currentTimeMillis(),
+                ChatMessage.Status.SENT,
+                replyTo == null ? null : replyTo.getMessageId(),
+                replyTo == null ? null : displayNameOf(replyTo.getSender()),
+                replyTo == null ? null : replyTo.getContent());
+
+        transcript.append(sent);
+        sidebar.notePreview(peerId, text, sent.getTimestamp(), true, false);
+    }
+
+    private void onReplyRequested(ChatMessage target) {
+        composer.setReplyTarget(target, displayNameOf(target.getSender()));
+    }
+
+    private void onLocalTypingChanged(boolean typing) {
+        String peerId = client.getReceiverId();
+        if (peerId != null) {
+            client.sendTyping(peerId, typing);
+        }
+    }
+
+    private String displayNameOf(String id) {
+        if (id == null) {
+            return "";
+        }
+        if (id.equals(client.getClientId())) {
+            return "You";
+        }
+        int at = id.indexOf('@');
+        return at > 0 ? id.substring(0, at) : id;
+    }
+
+    // ---------------------------------------------------------- protocol events
 
     @Override
     public void onMessageReceived(Message msg) {
-        SwingUtilities.invokeLater(() -> {
-            if (msg.getType() == MessageType.ERROR) {
-                String error = new String(msg.getPayload(), StandardCharsets.UTF_8);
-                if (error.contains("SECURITY ALERT")) {
-                    headerLabel.setText(error);
-                    headerLabel.setBackground(Color.RED);
-                    headerLabel.setForeground(Color.WHITE);
-                    inputField.setEnabled(false);
-                    sendButton.setEnabled(false);
+        SwingUtilities.invokeLater(() -> handleMessage(msg));
+    }
+
+    private void handleMessage(Message msg) {
+        switch (msg.getType()) {
+            case ERROR:
+                header.setStatus(new String(msg.getPayload(), StandardCharsets.UTF_8),
+                        Theme.danger(), false);
+                composer.setComposingEnabled(false);
+                return;
+
+            case TYPING:
+                if (isCurrentPeer(msg.getSenderId()) && transcript != null) {
+                    boolean typing = msg.getPayload() != null
+                            && msg.getPayload().length > 0
+                            && msg.getPayload()[0] == 1;
+                    transcript.setTyping(typing);
+                    if (typing) {
+                        typingExpiry.restart();
+                    } else {
+                        typingExpiry.stop();
+                    }
                 }
                 return;
-            }
-            
-            if (msg.getType() == MessageType.TEXT_MESSAGE) {
-                if (msg.getSenderId().equals(client.getReceiverId())) {
-                    String text = new String(msg.getPayload(), StandardCharsets.UTF_8);
-                    chatModel.addElement(new ChatMessage(msg.getSenderId(), client.getClientId(), text, msg.getTimestamp()));
-                    scrollToBottom();
+
+            case READ_RECEIPT:
+                if (isCurrentPeer(msg.getSenderId()) && transcript != null) {
+                    transcript.markAllRead();
                 }
-            }
-        });
+                return;
+
+            case DELIVERY_ACK:
+                if (transcript != null) {
+                    String ackedId = new String(msg.getPayload(), StandardCharsets.UTF_8);
+                    transcript.updateStatus(ackedId, ChatMessage.Status.DELIVERED);
+                }
+                return;
+
+            case TEXT_MESSAGE:
+                handleIncomingText(msg);
+                return;
+
+            default:
+                // Handshake traffic is handled in ChatClient; nothing to render here.
+        }
+    }
+
+    private void handleIncomingText(Message msg) {
+        String text = new String(msg.getPayload(), StandardCharsets.UTF_8);
+        boolean current = isCurrentPeer(msg.getSenderId());
+
+        if (current && transcript != null) {
+            typingExpiry.stop();
+            transcript.setTyping(false);
+            transcript.append(new ChatMessage(
+                    msg.getMessageId(), msg.getSenderId(), client.getClientId(),
+                    text, msg.getTimestamp(), ChatMessage.Status.DELIVERED));
+            client.getMessageRepository()
+                    .markConversationRead(client.getClientId(), msg.getSenderId());
+            client.sendReadReceipt(msg.getSenderId());
+        }
+
+        sidebar.notePreview(msg.getSenderId(), text, msg.getTimestamp(), false, !current);
+        if (!current) {
+            // Audible cue for a chat the user is not currently looking at.
+            java.awt.Toolkit.getDefaultToolkit().beep();
+        }
+    }
+
+    private boolean isCurrentPeer(String senderId) {
+        return senderId != null && senderId.equals(client.getReceiverId());
     }
 
     @Override
     public void onConnectionStateChanged(ConnectionState state) {
         SwingUtilities.invokeLater(() -> {
-            if (state == ConnectionState.CONNECTED) {
-                // Connection is established. But session is per peer.
-            } else {
-                headerLabel.setText("Disconnected from server");
-                headerLabel.setBackground(Color.ORANGE);
-                inputField.setEnabled(false);
-                sendButton.setEnabled(false);
+            String peerId = client.getReceiverId();
+            if (state != ConnectionState.CONNECTED) {
+                header.setStatus("connecting…", Theme.danger(), false);
+                composer.setComposingEnabled(false);
+                return;
             }
+            if (peerId == null) {
+                header.setStatus("connected", Theme.textSecondary(), false);
+                return;
+            }
+            // The window opens before connect() finishes, and a reconnect drops the old session,
+            // so the handshake has to be (re)driven whenever the transport comes up. Without this
+            // a chat opened during startup stays permanently un-sendable.
+            header.setStatus("establishing encryption…", Theme.textSecondary(), false);
+            client.startSecureChat(peerId);
         });
     }
 
@@ -165,26 +323,210 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
     public void onSessionStateChanged(Session.State state) {
         SwingUtilities.invokeLater(() -> {
             String peerId = client.getReceiverId();
-            if (peerId == null) return;
-            
+            if (peerId == null) {
+                return;
+            }
             if (state == Session.State.ESTABLISHED) {
-                String fp = client.getPeerFingerprint(peerId);
-                if (fp != null) {
-                    headerLabel.setText("Verified | Fingerprint: " + fp);
-                    headerLabel.setBackground(new Color(220, 248, 198));
-                    headerLabel.setForeground(Color.BLACK);
-                } else {
-                    headerLabel.setText("Connected to " + peerId);
-                }
-                inputField.setEnabled(true);
-                sendButton.setEnabled(true);
+                header.setStatus("end-to-end encrypted", Theme.accent(), true);
+                composer.setComposingEnabled(true);
+                composer.focusInput();
             } else {
-                headerLabel.setText("Handshaking with " + peerId + "...");
-                headerLabel.setBackground(Color.LIGHT_GRAY);
-                headerLabel.setForeground(Color.BLACK);
-                inputField.setEnabled(false);
-                sendButton.setEnabled(false);
+                header.setStatus("establishing encryption…", Theme.textSecondary(), false);
+                composer.setComposingEnabled(false);
             }
         });
+    }
+
+    // ------------------------------------------------------------------- header
+
+    /** The bar above the transcript: avatar, peer name, session status, and chat actions. */
+    private class ChatHeader extends JPanel {
+        private String peerId;
+        private String statusText = "";
+        private Color statusColor = Theme.textSecondary();
+        private boolean secure;
+
+        private final JPanel actions = new JPanel();
+
+        ChatHeader() {
+            setLayout(new BorderLayout());
+            setPreferredSize(new Dimension(10, 60));
+            setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.divider()));
+
+            actions.setOpaque(false);
+            actions.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 2, 12));
+
+            IconButton safety = new IconButton(() -> TgIcons.shield(20), "Safety number");
+            safety.addActionListener(e -> showSafetyNumber());
+
+            IconButton search = new IconButton(() -> TgIcons.search(19), "Search in chat");
+            search.addActionListener(e -> showChatSearch());
+
+            IconButton more = new IconButton(() -> TgIcons.more(19), "More");
+            more.addActionListener(e -> showChatMenu(more));
+
+            actions.add(safety);
+            actions.add(search);
+            actions.add(more);
+            add(actions, BorderLayout.EAST);
+        }
+
+        void setPeer(String peerId) {
+            this.peerId = peerId;
+            repaint();
+        }
+
+        void setStatus(String text, Color color, boolean secure) {
+            this.statusText = text;
+            this.statusColor = color;
+            this.secure = secure;
+            repaint();
+        }
+
+        void setComposerVisible(boolean visible) {
+            actions.setVisible(visible);
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            g2.setColor(Theme.headerBg());
+            g2.fillRect(0, 0, getWidth(), getHeight());
+
+            if (peerId == null) {
+                g2.setFont(Theme.headerTitle());
+                g2.setColor(Theme.textSecondary());
+                g2.drawString("Tetherless", 20, 36);
+                g2.dispose();
+                return;
+            }
+
+            int avatar = 40;
+            int avatarY = (getHeight() - avatar) / 2;
+            Avatars.paint(g2, peerId, displayNameOf(peerId), 16, avatarY, avatar);
+
+            int textX = 16 + avatar + 12;
+            g2.setFont(Theme.headerTitle());
+            g2.setColor(Theme.textPrimary());
+            g2.drawString(displayNameOf(peerId), textX, 27);
+
+            int statusX = textX;
+            if (secure) {
+                Icon lock = TgIcons.lock(12);
+                TgIcons.tinted(lock, statusColor).paintIcon(this, g2, statusX, 33);
+                statusX += lock.getIconWidth() + 5;
+            }
+            g2.setFont(Theme.headerSubtitle());
+            g2.setColor(statusColor);
+            FontMetrics fm = g2.getFontMetrics();
+            g2.drawString(statusText, statusX, 33 + fm.getAscent() - 1);
+
+            g2.dispose();
+        }
+    }
+
+    // ------------------------------------------------------------ header actions
+
+    private void showSafetyNumber() {
+        String peerId = client.getReceiverId();
+        if (peerId == null) {
+            return;
+        }
+        String peerFp = client.getPeerFingerprint(peerId);
+        String body = "Compare these numbers with " + displayNameOf(peerId)
+                + " over a channel you already trust\n"
+                + "(in person, or a phone call). If they match, nobody is intercepting this chat.\n\n"
+                + "You:  " + group(ownFingerprint) + "\n"
+                + displayNameOf(peerId) + ":  "
+                + (peerFp == null ? "(no key received yet)" : group(peerFp));
+
+        JOptionPane.showMessageDialog(this, body, "Safety number",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /** Renders a fingerprint in space-separated blocks, which is far easier to read aloud. */
+    private static String group(String fingerprint) {
+        if (fingerprint == null) {
+            return "(unknown)";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < fingerprint.length(); i += 4) {
+            sb.append(fingerprint, i, Math.min(i + 4, fingerprint.length())).append(' ');
+        }
+        return sb.toString().trim();
+    }
+
+    private void showChatSearch() {
+        String peerId = client.getReceiverId();
+        if (peerId == null) {
+            return;
+        }
+        String query = JOptionPane.showInputDialog(this, "Search in this chat:",
+                "Search", JOptionPane.PLAIN_MESSAGE);
+        if (query == null || query.trim().isEmpty()) {
+            return;
+        }
+        List<ChatMessage> hits = client.getMessageRepository()
+                .searchMessages(client.getClientId(), query.trim(), 50);
+        hits.removeIf(m -> !m.getSender().equals(peerId) && !m.getReceiver().equals(peerId));
+
+        if (hits.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No messages found for \"" + query.trim() + "\".",
+                    "Search", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(hits.size()).append(" match")
+                .append(hits.size() == 1 ? "" : "es").append(":\n\n");
+        for (ChatMessage m : hits) {
+            sb.append(displayNameOf(m.getSender())).append(": ")
+                    .append(m.getContent().length() > 70
+                            ? m.getContent().substring(0, 69) + "…" : m.getContent())
+                    .append('\n');
+        }
+        JOptionPane.showMessageDialog(this, sb.toString(), "Search results",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void showChatMenu(java.awt.Component anchor) {
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+
+        javax.swing.JMenuItem safety = new javax.swing.JMenuItem("Safety number…");
+        safety.addActionListener(e -> showSafetyNumber());
+        menu.add(safety);
+
+        javax.swing.JMenuItem search = new javax.swing.JMenuItem("Search in chat…");
+        search.addActionListener(e -> showChatSearch());
+        menu.add(search);
+
+        menu.addSeparator();
+
+        javax.swing.JMenuItem rekey = new javax.swing.JMenuItem("Renegotiate encryption");
+        rekey.addActionListener(e -> {
+            String peerId = client.getReceiverId();
+            if (peerId != null) {
+                composer.setComposingEnabled(false);
+                header.setStatus("establishing encryption…", Theme.textSecondary(), false);
+                client.restartSecureChat(peerId);
+            }
+        });
+        menu.add(rekey);
+
+        menu.show(anchor, 0, anchor.getHeight());
+    }
+
+    /** Refreshes the chat list, e.g. after history changes outside the open conversation. */
+    public void refreshSidebar() {
+        sidebar.reload();
+    }
+
+    /** Used by {@code Main} to jump straight into a conversation from a command-line argument. */
+    public void openConversation(String peerId) {
+        sidebar.openConversation(peerId);
     }
 }

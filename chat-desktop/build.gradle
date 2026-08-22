@@ -4,18 +4,21 @@ plugins {
 }
 
 java {
-    
-    
 }
 
 application {
     mainClass = 'com.e2eechat.desktop.Main'
 }
 
+run {
+    systemProperties System.properties
+}
+
 dependencies {
     implementation libs.slf4j.api
     implementation libs.logback.classic
     implementation project(':core-shared')
+    implementation libs.flatlaf
     implementation libs.sqlite.jdbc
     testImplementation libs.junit
 }

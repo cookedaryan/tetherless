@@ -3,4 +3,11 @@
     <color name="colorPrimary">#6200EE</color>
     <color name="colorPrimaryDark">#3700B3</color>
     <color name="colorAccent">#03DAC5</color>
+    <color name="bubble_out">#DCF8C6</color>
+    <color name="bubble_in">#FFFFFF</color>
+    <color name="bubble_out_text">#000000</color>
+    <color name="bubble_in_text">#000000</color>
+    <color name="chat_background">#ECE5DD</color>
+    <color name="warning_red">#D32F2F</color>
+    <color name="white">#FFFFFF</color>
 </resources>
