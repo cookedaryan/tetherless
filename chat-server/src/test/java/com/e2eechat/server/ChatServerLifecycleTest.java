@@ -26,7 +26,12 @@ public class ChatServerLifecycleTest {
 
     @Before
     public void setup() throws Exception {
-        server = new ChatServer(0); // ephemeral port
+        ServerConfig config = new ServerConfig();
+        config.setPort(0);
+        config.setMaxConnections(2000);
+        config.setMaxConnectionsPerIp(2000);
+        config.setRateLimitBurst(2000);
+        server = new ChatServer(config); // ephemeral port
         new Thread(() -> server.start()).start();
         
         // Wait for server to bind

@@ -101,6 +101,8 @@ public class ClientSession implements Runnable {
             attempts++;
         }
 
+        try { Thread.sleep(50); } catch (InterruptedException e) {} // Give writer time to flush
+        
         running = false;
         if (writerThread != null) {
             writerThread.interrupt();
