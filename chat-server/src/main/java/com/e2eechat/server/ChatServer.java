@@ -3,6 +3,8 @@ package com.e2eechat.server;
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
 import com.e2eechat.core.models.MessageType;
+import com.e2eechat.core.protocol.FrameWriter;
+import com.e2eechat.core.protocol.MessageCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,38 +12,54 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ChatServer {
     private static final Logger logger = LoggerFactory.getLogger(ChatServer.class);
-    private final int port;
-    private final ClientRegistry registry = new ClientRegistry();
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
+    
+    private final ServerConfig config;
+    private final ClientRegistry registry;
+    private final ExecutorService executorService;
     private volatile boolean running = false;
     private ServerSocket serverSocket;
+    
+    private final AtomicInteger totalConnections = new AtomicInteger(0);
+    private final ConcurrentHashMap<String, AtomicInteger> connectionsPerIp = new ConcurrentHashMap<>();
 
     public ChatServer() {
-        this(8080);
+        this(new ServerConfig());
     }
     
     public ChatServer(int port) {
-        this.port = port;
+        ServerConfig cfg = new ServerConfig();
+        cfg.setPort(port);
+        this.config = cfg;
+        this.registry = new ClientRegistry();
+        this.executorService = Executors.newFixedThreadPool(config.getMaxConnections() * 2);
+    }
+    
+    public ChatServer(ServerConfig config) {
+        this.config = config;
+        this.registry = new ClientRegistry();
+        this.executorService = Executors.newFixedThreadPool(config.getMaxConnections() * 2);
     }
 
     public void start() {
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
 
         try {
-            serverSocket = new ServerSocket(port);
+            serverSocket = new ServerSocket(config.getPort());
             running = true;
             logger.info("Relay Server started on port {}", serverSocket.getLocalPort());
 
             while (running) {
                 try {
                     Socket clientSocket = serverSocket.accept();
-                    executorService.submit(new ClientSession(clientSocket, registry));
+                    handleNewConnection(clientSocket);
                 } catch (IOException e) {
                     if (running) {
                         logger.error("Error accepting client connection", e);
@@ -54,13 +72,65 @@ public class ChatServer {
             shutdown();
         }
     }
+    
+    private void handleNewConnection(Socket clientSocket) {
+        String ip = clientSocket.getInetAddress().getHostAddress();
+        
+        // 1. Check max connections
+        if (totalConnections.get() >= config.getMaxConnections()) {
+            rejectConnection(clientSocket, "SERVER_FULL");
+            return;
+        }
+        
+        // 2. Check per-IP limit
+        AtomicInteger ipCount = connectionsPerIp.computeIfAbsent(ip, k -> new AtomicInteger(0));
+        if (ipCount.get() >= config.getMaxConnectionsPerIp()) {
+            rejectConnection(clientSocket, "TOO_MANY_CONNECTIONS");
+            return;
+        }
+        
+        // Accept
+        totalConnections.incrementAndGet();
+        ipCount.incrementAndGet();
+        
+        Runnable cleanupTask = () -> {
+            totalConnections.decrementAndGet();
+            AtomicInteger count = connectionsPerIp.get(ip);
+            if (count != null) {
+                if (count.decrementAndGet() <= 0) {
+                    connectionsPerIp.remove(ip, count);
+                }
+            }
+        };
+        
+        executorService.submit(new ClientSession(clientSocket, registry, config, cleanupTask));
+    }
+    
+    private void rejectConnection(Socket clientSocket, String reason) {
+        try {
+            logger.warn("Rejecting connection from {}: {}", clientSocket.getInetAddress().getHostAddress(), reason);
+            FrameWriter out = new FrameWriter(clientSocket.getOutputStream());
+            Message errorMsg = new MessageBuilder()
+                    .setType(MessageType.ERROR)
+                    .setSenderId("SERVER")
+                    .setReceiverId("unknown")
+                    .setMessageId(UUID.randomUUID().toString())
+                    .setPayload(reason.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    .setTimestamp(System.currentTimeMillis())
+                    .buildUnsigned();
+            out.writeFrame(MessageCodec.encode(errorMsg));
+        } catch (Exception e) {
+            // Ignore
+        } finally {
+            try { clientSocket.close(); } catch (IOException ignored) {}
+        }
+    }
 
     public void shutdown() {
         if (!running) return;
         running = false;
         logger.info("Shutting down ChatServer...");
 
-        // Close server socket to stop accepting new connections
         if (serverSocket != null && !serverSocket.isClosed()) {
             try {
                 serverSocket.close();
@@ -69,7 +139,6 @@ public class ChatServer {
             }
         }
 
-        // Send DISCONNECT to all active sessions
         for (ClientSession session : registry.getAllSessions()) {
             try {
                 Message disconnectMsg = new MessageBuilder()
@@ -86,7 +155,6 @@ public class ChatServer {
             }
         }
 
-        // Await executor termination
         executorService.shutdownNow();
         try {
             if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -100,6 +168,6 @@ public class ChatServer {
     }
     
     public int getPort() {
-        return serverSocket != null ? serverSocket.getLocalPort() : port;
+        return serverSocket != null ? serverSocket.getLocalPort() : config.getPort();
     }
 }

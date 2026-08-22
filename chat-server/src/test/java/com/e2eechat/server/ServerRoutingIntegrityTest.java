@@ -23,7 +23,10 @@ public class ServerRoutingIntegrityTest {
 
     @Before
     public void setup() throws Exception {
-        server = new ChatServer(0);
+        ServerConfig config = new ServerConfig();
+        config.setPort(0);
+        config.setRateLimitBurst(1000); // Prevent rate limit from interfering with overflow test
+        server = new ChatServer(config);
         new Thread(() -> server.start()).start();
         Thread.sleep(200);
         port = server.getPort();

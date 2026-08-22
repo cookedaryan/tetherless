@@ -18,11 +18,14 @@ import java.util.concurrent.ArrayBlockingQueue;
 
 public class ClientSession implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(ClientSession.class);
-    private static final int TIMEOUT_MS = 30000;
+    private static final int IDLE_TIMEOUT_MS = 30000;
     private static final int QUEUE_CAPACITY = 256;
 
     private final Socket socket;
     private final ClientRegistry registry;
+    private final ServerConfig config;
+    private final Runnable onDisconnectTask;
+    private final TokenBucket rateLimiter;
     
     private FrameReader in;
     private FrameWriter out;
@@ -32,10 +35,19 @@ public class ClientSession implements Runnable {
     private final ArrayBlockingQueue<byte[]> outboundQueue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
     private Thread writerThread;
     private volatile boolean running = true;
+    private boolean handshakeComplete = false;
 
-    public ClientSession(Socket socket, ClientRegistry registry) {
+    public ClientSession(Socket socket, ClientRegistry registry, ServerConfig config, Runnable onDisconnectTask) {
         this.socket = socket;
         this.registry = registry;
+        this.config = config;
+        this.onDisconnectTask = onDisconnectTask;
+        this.rateLimiter = new TokenBucket(config.getRateLimitBurst(), config.getRateLimitRefillSec());
+    }
+
+    // Constructor for tests that haven't been updated yet
+    public ClientSession(Socket socket, ClientRegistry registry) {
+        this(socket, registry, new ServerConfig(), () -> {});
     }
 
     public void enqueueFrame(byte[] frame) {
@@ -47,7 +59,7 @@ public class ClientSession implements Runnable {
                 Message errorMsg = new MessageBuilder()
                         .setType(MessageType.ERROR)
                         .setSenderId("SERVER")
-                        .setReceiverId(clientId)
+                        .setReceiverId(clientId != null ? clientId : "unknown")
                         .setMessageId(UUID.randomUUID().toString())
                         .setPayload("BUFFER_OVERFLOW".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                         .setTimestamp(System.currentTimeMillis())
@@ -73,9 +85,8 @@ public class ClientSession implements Runnable {
     }
 
     public void disconnect() {
-        running = false;
+        if (!running) return;
         
-        // Give writer thread a short time to flush the queue
         int attempts = 0;
         while (!outboundQueue.isEmpty() && attempts < 20) {
             try {
@@ -86,6 +97,7 @@ public class ClientSession implements Runnable {
             attempts++;
         }
 
+        running = false;
         if (writerThread != null) {
             writerThread.interrupt();
         }
@@ -93,6 +105,10 @@ public class ClientSession implements Runnable {
             socket.close();
         } catch (IOException e) {
             // Ignored
+        }
+        
+        if (onDisconnectTask != null) {
+            onDisconnectTask.run();
         }
     }
 
@@ -120,7 +136,7 @@ public class ClientSession implements Runnable {
     @Override
     public void run() {
         try {
-            socket.setSoTimeout(TIMEOUT_MS);
+            socket.setSoTimeout(config.getHandshakeTimeoutMs());
             out = new FrameWriter(socket.getOutputStream());
             in = new FrameReader(socket.getInputStream());
             
@@ -130,15 +146,21 @@ public class ClientSession implements Runnable {
                 byte[] frame;
                 try {
                     frame = in.readFrame();
-                    missedPings = 0; // Reset on any successful read
+                    missedPings = 0;
                 } catch (SocketTimeoutException e) {
+                    if (!handshakeComplete) {
+                        logger.warn("Client {} failed to handshake within {} ms. Dropping.", 
+                                socket.getInetAddress(), config.getHandshakeTimeoutMs());
+                        break;
+                    }
+                    
                     missedPings++;
                     if (missedPings >= 2) {
                         logger.info("Client {} timed out after {} missed pings", 
                                 clientId != null ? Redact.id(clientId) : "unknown", missedPings);
                         break;
                     }
-                    // Send PING
+                    
                     Message pingMsg = new MessageBuilder()
                             .setType(MessageType.PING)
                             .setMessageId(UUID.randomUUID().toString())
@@ -148,8 +170,24 @@ public class ClientSession implements Runnable {
                     continue;
                 }
 
-                // Decode only to inspect headers for routing
                 Message message = MessageCodec.decode(frame);
+                
+                // Rate Limiting Check
+                if (message.getType() != MessageType.PING && message.getType() != MessageType.PONG) {
+                    if (!rateLimiter.tryConsume()) {
+                        logger.warn("Client {} exceeded rate limit. Disconnecting.", clientId != null ? Redact.id(clientId) : socket.getInetAddress());
+                        Message errorMsg = new MessageBuilder()
+                                .setType(MessageType.ERROR)
+                                .setSenderId("SERVER")
+                                .setReceiverId(clientId != null ? clientId : "unknown")
+                                .setMessageId(UUID.randomUUID().toString())
+                                .setPayload("RATE_LIMIT_EXCEEDED".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                                .setTimestamp(System.currentTimeMillis())
+                                .buildUnsigned();
+                        sendMessage(errorMsg);
+                        break; // Disconnect immediately
+                    }
+                }
 
                 if (message.getType() == MessageType.HELLO) {
                     if (clientId == null) {
@@ -166,8 +204,11 @@ public class ClientSession implements Runnable {
                                     .setTimestamp(System.currentTimeMillis())
                                     .buildUnsigned();
                             sendMessage(errorMsg);
-                            break; // Disconnect
+                            break;
                         }
+                        
+                        handshakeComplete = true;
+                        socket.setSoTimeout(IDLE_TIMEOUT_MS);
                     } else {
                         logger.warn("Received duplicate HELLO from already identified client: {}", Redact.id(clientId));
                     }
@@ -181,8 +222,12 @@ public class ClientSession implements Runnable {
                             .buildUnsigned();
                     sendMessage(pongMsg);
                 } else if (message.getType() == MessageType.PONG) {
-                    // Handled by missedPings reset above
+                    // Ignored, missedPings is reset
                 } else {
+                    if (!handshakeComplete) {
+                        logger.warn("Received non-HELLO message before handshake from {}", socket.getInetAddress());
+                        break;
+                    }
                     routeFrame(message.getReceiverId(), frame);
                 }
             }
@@ -210,7 +255,6 @@ public class ClientSession implements Runnable {
         if (receiverSession != null) {
             receiverSession.enqueueFrame(frame);
         } else {
-            logger.warn("Receiver not found: {}", Redact.id(receiverId));
             try {
                 Message errorMsg = new MessageBuilder()
                         .setType(MessageType.ERROR)
