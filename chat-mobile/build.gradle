@@ -14,6 +14,10 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        // Without this the module falls back to the legacy InstrumentationTestRunner, which cannot
+        // execute AndroidJUnit4 tests: the run reports "0 tests" and then "Process crashed".
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
         javaCompileOptions {
             annotationProcessorOptions {
@@ -52,5 +56,6 @@ dependencies {
     androidTestImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test:core:1.5.0'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
     androidTestImplementation 'androidx.arch.core:core-testing:2.2.0'
 }

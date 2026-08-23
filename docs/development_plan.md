@@ -785,8 +785,14 @@ Session states: `IDLE → HANDSHAKE_SENT → ESTABLISHED → EXPIRED`, plus term
 
 ---
 
-### INTEG-02 — Codec and crypto golden vectors
+### INTEG-02 — Codec and crypto golden vectors — **DONE**
 **Priority:** P1 · **Depends on:** `CORE-03`, `CORE-04` · **Estimate:** 1 day
+
+Delivered as `ProtocolVectors` (17 frozen wire-format cases), `ProtocolConformance` (the checker
+both platforms run, so the two cannot drift apart in the checks themselves), and the committed
+`protocol-vectors.txt`. Asserted by `ProtocolVectorsTest` and `CryptoVectorsTest` on the JVM and by
+`ProtocolConformanceTest` on Android. Executed on a real Android 15 runtime, not merely compiled;
+CI runs it on an emulator via the `android-conformance` job.
 
 **Action items:**
 1. Generate a fixture file of encoded `Message` frames covering every `MessageType`, every boundary (empty payload, max payload, null `receiverId`, non-ASCII ids and content, emoji, RTL text).
