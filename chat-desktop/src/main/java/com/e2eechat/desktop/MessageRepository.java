@@ -308,6 +308,79 @@ public class MessageRepository {
 
     // ------------------------------------------------------------ at-rest crypto
 
+    /**
+     * Re-encrypts every stored body from {@code from} to {@code to}, for changing the key
+     * derivation without losing history.
+     *
+     * <p>Runs as a single transaction: an interrupted migration rolls back rather than leaving some
+     * rows readable under the old key and some under the new, which would be unrecoverable.
+     *
+     * @return the number of rows re-encrypted, or -1 if the migration failed and was rolled back
+     */
+    public int migrateEncryption(SecretKey from, SecretKey to) {
+        String select = "SELECT id, content, reply_to_preview FROM messages";
+        String update = "UPDATE messages SET content = ?, reply_to_preview = ? WHERE id = ?";
+
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            conn.setAutoCommit(false);
+            int migrated = 0;
+            try (PreparedStatement read = conn.prepareStatement(select);
+                 PreparedStatement write = conn.prepareStatement(update);
+                 ResultSet rs = read.executeQuery()) {
+
+                while (rs.next()) {
+                    long id = rs.getLong("id");
+                    String content = rs.getString("content");
+                    String replyPreview = rs.getString("reply_to_preview");
+
+                    // A row that will not decrypt under the old key cannot be migrated; failing the
+                    // whole transaction is safer than silently replacing it with a marker.
+                    String plainContent = decryptWith(content, from);
+                    String plainPreview = replyPreview == null
+                            ? null : decryptWith(replyPreview, from);
+
+                    write.setString(1, encryptWith(plainContent, to));
+                    write.setString(2, plainPreview == null ? null : encryptWith(plainPreview, to));
+                    write.setLong(3, id);
+                    write.addBatch();
+                    migrated++;
+                }
+                write.executeBatch();
+                conn.commit();
+                logger.info("Re-encrypted {} stored messages under the new key derivation", migrated);
+                return migrated;
+            } catch (Exception e) {
+                conn.rollback();
+                logger.error("Re-encryption failed and was rolled back; the database is unchanged", e);
+                return -1;
+            }
+        } catch (Exception e) {
+            logger.error("Could not open the database to re-encrypt it", e);
+            return -1;
+        }
+    }
+
+    private static String encryptWith(String content, SecretKey key) throws Exception {
+        byte[] iv = AESUtils.generateIV();
+        byte[] ciphertext = AESUtils.encrypt(content.getBytes(StandardCharsets.UTF_8), key, iv);
+        ByteBuffer bb = ByteBuffer.allocate(iv.length + ciphertext.length);
+        bb.put(iv);
+        bb.put(ciphertext);
+        return Base64.getEncoder().encodeToString(bb.array());
+    }
+
+    private static String decryptWith(String encoded, SecretKey key) throws Exception {
+        byte[] payload = Base64.getDecoder().decode(encoded);
+        if (payload.length <= 12) {
+            throw new IllegalStateException("stored payload is too short to be a message");
+        }
+        byte[] iv = new byte[12];
+        byte[] ciphertext = new byte[payload.length - 12];
+        System.arraycopy(payload, 0, iv, 0, 12);
+        System.arraycopy(payload, 12, ciphertext, 0, ciphertext.length);
+        return new String(AESUtils.decrypt(ciphertext, key, iv), StandardCharsets.UTF_8);
+    }
+
     private String encrypt(String content) throws Exception {
         byte[] plaintext = content.getBytes(StandardCharsets.UTF_8);
         byte[] iv = AESUtils.generateIV();

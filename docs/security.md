@@ -32,7 +32,7 @@ routing metadata.
 |---|---|
 | Message encryption | AES-256-GCM, 96-bit nonce, 128-bit tag |
 | Key agreement | Finite-field Diffie-Hellman, RFC 3526 MODP Group 14 (2048-bit) |
-| Key derivation | HKDF-SHA256 |
+| Key derivation | HKDF-SHA256 (session keys) - PBKDF2-HMAC-SHA256, 210,000 iterations (at-rest key) |
 | Identity and signatures | RSA-2048, `SHA256withRSA` |
 | Peer address | First 128 bits of SHA-256 over the X.509 identity public key |
 | Transport | TLS 1.3, certificate-pinned |
@@ -163,20 +163,17 @@ The desktop client encrypts message bodies in its local database with a passphra
 access to the app's data directory — which on a rooted or compromised device is anyone. The Android
 identity *key* is protected (see below); the message history is not.
 
-### At-rest encryption on desktop is partial, and its key is weakly derived
+### At-rest encryption on desktop is partial
 
-Only message bodies are encrypted. Participants, timestamps and message counts remain visible in the
-database file.
+Only message bodies and quoted reply previews are encrypted. Participants, timestamps and message
+counts remain visible in the database file.
 
-More seriously, **the database key is derived from the passphrase with HKDF-SHA256, which is not a
-password-based KDF**. HKDF is a single fast pass with no work factor: it is the right tool for
-expanding an already-high-entropy secret such as a Diffie-Hellman output, and the wrong tool for
-stretching something a human typed. An attacker holding the database file can therefore guess
-passphrases at the speed of a hash rather than being slowed down.
+The key is derived with PBKDF2-HMAC-SHA256 at 210,000 iterations over a random per-profile salt, so
+an attacker holding the file pays that cost for every passphrase guess. **The strength of this rests
+entirely on the passphrase**: no iteration count rescues a guessable one.
 
-The development plan specifies PBKDF2-HMAC-SHA256 at 210,000 iterations or more for this; the
-implementation has not caught up. Until it does, treat desktop at-rest encryption as protecting
-against a casual reader of the file, not against an attacker who is willing to spend CPU time.
+The salt and iteration count are stored in `profile.properties`, so the count can be raised later
+for new profiles without making existing databases unreadable.
 
 ### Session expiry is not implemented
 
@@ -216,7 +213,7 @@ which is a real limitation regardless of how thorough they are.
 | Relay operator | See the social graph, timing, message sizes; deny service | Read or forge messages, join a session |
 | Peer you talk to | Read what you send them; claim any display name | Impersonate a third party to you |
 | Device thief (Android) | **Read your entire message history** | Extract the identity key |
-| Device thief (desktop) | See who you talked to and when; brute-force the passphrase cheaply to reach message bodies | Use the identity key without the passphrase |
+| Device thief (desktop) | See who you talked to and when; attack the passphrase offline at 210,000 PBKDF2 iterations per guess | Read message bodies or use the identity key without the passphrase |
 
 ---
 
@@ -255,5 +252,8 @@ successes is not informative:
   unreachable. They are now derived from the identity key alone.
 - **Peer ids were 28 bits** of fingerprint, colliding around 16,000 identities — and because the
   relay rejects duplicate ids, a collision would lock a user out of their own account. Now 128 bits.
+- **The desktop at-rest key was derived with HKDF**, which has no work factor and let an attacker
+  holding the database guess passphrases at hash speed. Now PBKDF2-HMAC-SHA256 at 210,000
+  iterations, with existing databases re-encrypted in place on first launch.
 - **Nothing bound a peer id to its key**, so on first contact a peer could claim someone else's
   address and have their own key trusted against it. Now checked on every `HELLO`.

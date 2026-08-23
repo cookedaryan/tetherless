@@ -1,19 +1,16 @@
 package com.e2eechat.desktop;
 
-import com.e2eechat.core.crypto.DHUtils;
 import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.core.keys.JceKeyStoreManager;
 import com.e2eechat.core.session.SessionManager;
 
 import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileInputStream;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.Optional;
@@ -131,19 +128,47 @@ public class Main {
             // sent in HELLO, so renaming yourself no longer changes the address peers reach you at.
             String clientId = PeerId.of(identity.getPublic());
             
-            // Derive DB Key
+            // The database key comes from a typed passphrase, so it is stretched with PBKDF2 rather
+            // than HKDF: without a work factor an attacker holding the file guesses at hash speed.
             SecretKey dbKey = null;
             try {
-                byte[] ikm = new String(validPassphrase).getBytes(StandardCharsets.UTF_8);
-                byte[] salt = clientId.getBytes(StandardCharsets.UTF_8);
-                byte[] info = "tetherless-db-key".getBytes(StandardCharsets.UTF_8);
-                byte[] keyBytes = DHUtils.hkdfSha256(ikm, salt, info, 32);
-                dbKey = new SecretKeySpec(keyBytes, "AES");
+                Optional<ProfileStore.KdfParameters> stored = profileStore.getKdfParameters();
+                if (stored.isPresent()) {
+                    dbKey = DatabaseKeys.derive(validPassphrase,
+                            stored.get().salt, stored.get().iterations);
+                } else {
+                    // Either a new profile, or one whose database is still encrypted under the old
+                    // HKDF derivation. Both end up with fresh PBKDF2 parameters; only the second
+                    // has rows to re-encrypt.
+                    byte[] salt = DatabaseKeys.newSalt();
+                    SecretKey newKey = DatabaseKeys.derive(validPassphrase, salt,
+                            DatabaseKeys.ITERATIONS);
+
+                    if (!isFirstRun) {
+                        SecretKey legacyKey = DatabaseKeys.legacyHkdf(validPassphrase, clientId);
+                        int migrated = new MessageRepository(dbPath, legacyKey)
+                                .migrateEncryption(legacyKey, newKey);
+                        if (migrated < 0) {
+                            JOptionPane.showMessageDialog(null,
+                                    "Could not re-encrypt the local message database.\n"
+                                            + "It has been left untouched. Please report this.",
+                                    "Migration failed", JOptionPane.ERROR_MESSAGE);
+                            System.exit(1);
+                        }
+                    }
+                    profileStore.setKdfParameters(salt, DatabaseKeys.ITERATIONS);
+                    dbKey = newKey;
+                }
             } catch (Exception e) {
-                JOptionPane.showMessageDialog(null, "Failed to derive DB key. Exiting.");
+                JOptionPane.showMessageDialog(null, "Failed to derive the database key. Exiting.");
                 System.exit(1);
+            } finally {
+                // The passphrase is no longer needed once the key exists.
+                if (validPassphrase != null) {
+                    java.util.Arrays.fill(validPassphrase, '\0');
+                }
             }
-            
+
             MessageRepository messageRepository = new MessageRepository(dbPath, dbKey);
             
             Function<String, PublicKey> peerKeyLookup = senderId -> {
