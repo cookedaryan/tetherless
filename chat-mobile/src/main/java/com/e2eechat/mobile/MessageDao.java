@@ -22,4 +22,8 @@ public interface MessageDao {
     void updateDeliveryState(String messageId, String state);
     @Query("SELECT * FROM messages WHERE deliveryState = :state ORDER BY sentAt ASC")
     List<MessageEntity> getPendingMessages(String state);
+
+    /** Synchronous full read, used once when carrying a plaintext database into an encrypted one. */
+    @Query("SELECT * FROM messages ORDER BY sentAt ASC")
+    List<MessageEntity> getAllForExport();
 }

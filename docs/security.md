@@ -32,7 +32,8 @@ routing metadata.
 |---|---|
 | Message encryption | AES-256-GCM, 96-bit nonce, 128-bit tag |
 | Key agreement | Finite-field Diffie-Hellman, RFC 3526 MODP Group 14 (2048-bit) |
-| Key derivation | HKDF-SHA256 (session keys) - PBKDF2-HMAC-SHA256, 210,000 iterations (at-rest key) |
+| Key derivation | HKDF-SHA256 (session keys) - PBKDF2-HMAC-SHA256, 210,000 iterations (desktop at-rest key) |
+| Local database | SQLCipher whole-file on Android, keyed from `AndroidKeyStore`; column-level on desktop |
 | Identity and signatures | RSA-2048, `SHA256withRSA` |
 | Peer address | First 128 bits of SHA-256 over the X.509 identity public key |
 | Transport | TLS 1.3, certificate-pinned |
@@ -133,7 +134,9 @@ Tested: the codec fuzz tests, plus `ProtocolVectorsTest` for exact field round-t
 
 *Someone has the device.*
 
-Partially addressed, and the weakest area. See limitations below.
+Partially addressed, and still the weakest area. Both clients now encrypt their message database,
+and identity keys are non-exportable on Android, so the files alone are not enough. But neither
+client protects a live compromised process, and neither offers post-compromise recovery.
 
 ---
 
@@ -156,12 +159,24 @@ every message. Message sizes are not padded, so lengths leak. Typing notificatio
 are signed but not encrypted — they carry no content, but they do tell the relay you are active. If
 the relay operator is the adversary you care about, **the social graph is not protected**.
 
-### Plaintext at rest on mobile
+### At-rest encryption on mobile is device-bound
 
-The desktop client encrypts message bodies in its local database with a passphrase-derived key.
-**The Android client does not.** Messages are stored in Room as plaintext, readable by anyone with
-access to the app's data directory — which on a rooted or compromised device is anyone. The Android
-identity *key* is protected (see below); the message history is not.
+The Android database is SQLCipher-encrypted as a whole file, so unlike desktop's column-level
+scheme the participants, timestamps and message counts are covered too. A random 256-bit key is
+generated once and wrapped with an AES key held in `AndroidKeyStore` — in a secure element where the
+hardware provides one — so only the wrapped blob is written to preferences.
+
+Two consequences follow. The history is **bound to this device and this install**: copying the files
+off, or pulling them from a backup, yields nothing usable, and an uninstall destroys the history
+permanently. And there is nothing to type, so **an attacker who can already run code as this app on
+an unlocked device can ask the keystore to unwrap for them**. This protects the files at rest, not a
+live compromised process.
+
+Tested: `DatabaseEncryptionTest` writes a known string, then reads the raw database and its
+write-ahead log back off the device and asserts the string, the peer ids, and the `SQLite format 3`
+header are all absent — configuring SQLCipher and assuming it took effect is exactly the kind of
+claim that turns out to be false. It also checks the wrong key cannot open the file and that the
+unwrapped key never reaches preferences.
 
 ### At-rest encryption on desktop is partial
 
@@ -255,5 +270,9 @@ successes is not informative:
 - **The desktop at-rest key was derived with HKDF**, which has no work factor and let an attacker
   holding the database guess passphrases at hash speed. Now PBKDF2-HMAC-SHA256 at 210,000
   iterations, with existing databases re-encrypted in place on first launch.
+- **The Android message database was plaintext**, readable by anything with access to the app's data
+  directory. Confirmed by grepping message bodies straight out of the file on a running emulator,
+  not inferred from the code. Now SQLCipher-encrypted whole-file with a key wrapped in
+  `AndroidKeyStore`; existing history is migrated across on first launch.
 - **Nothing bound a peer id to its key**, so on first contact a peer could claim someone else's
   address and have their own key trusted against it. Now checked on every `HELLO`.

@@ -126,7 +126,7 @@ An honest inventory of what exists today, because several tickets below exist pu
 - **T3 — Network attacker.** Defeated by TLS (`SERVER-06`) *in addition to* E2EE — not instead of it.
 - **T4 — Replay.** An attacker re-sends a captured ciphertext. Defeated by `CORE-01` (`messageId` + `timestamp`) and `CORE-07` (per-session monotonic counter and IV-reuse prevention).
 - **T5 — Malicious peer payload.** A peer sends a hostile serialized object. Defeated by `CORE-03` (explicit binary codec, no `readObject` on untrusted data).
-- **T6 — Local device compromise, at rest.** Partially mitigated by `CORE-02` (encrypted keystore) and `CLIENT-*-05` (encrypted local DB).
+- **T6 — Local device compromise, at rest.** Partially mitigated by `CORE-02` (encrypted keystore), `CLIENT-DESKTOP-05` and `CLIENT-MOBILE-07` (encrypted local DB).
 
 **Explicitly out of scope for v1.0 (state it, do not pretend otherwise):**
 
@@ -679,7 +679,7 @@ Session states: `IDLE → HANDSHAKE_SENT → ESTABLISHED → EXPIRED`, plus term
 
 **Action items:**
 1. Add a singleton builder — `AppDatabase` is abstract and currently has no `Room.databaseBuilder` call anywhere, so no instance can exist. Use a double-checked-locked singleton with `applicationContext`.
-2. Mirror the desktop schema on `MessageEntity`: add `messageId` (with `@Index(unique = true)`), `conversationId`, `sentAt`, `receivedAt`, `direction`, `deliveryState`; change `content` from `byte[]` to `String` (plaintext at rest, per the same tradeoff as desktop).
+2. Mirror the desktop schema on `MessageEntity`: add `messageId` (with `@Index(unique = true)`), `conversationId`, `sentAt`, `receivedAt`, `direction`, `deliveryState`; change `content` from `byte[]` to `String` (the row is plaintext, but the file is encrypted - see `CLIENT-MOBILE-07`).
 3. Change `@PrimaryKey` `int id` to `long`.
 4. Change `getAllMessages()` from a blocking `List` to `LiveData<List<MessageEntity>>` — the current signature will throw if called on the main thread and blocks if not.
 5. Add `@Insert(onConflict = OnConflictStrategy.IGNORE)` for idempotent redelivery, `getConversation(id)` paged with the Paging 3 library or a `LIMIT/OFFSET` query, and `updateDeliveryState`.
@@ -776,6 +776,42 @@ the shared engine is the follow-up that stops them drifting.
 2. Explain the `AndroidKeyStore` consequence plainly: the identity key cannot be exported or backed up, so uninstalling the app permanently loses the identity and all peers will see a key change.
 3. Set `android:allowBackup="false"` and add `android:dataExtractionRules` — the manifest currently has `allowBackup="true"`, which would ship the message database to cloud backup.
 4. Add a `networkSecurityConfig` that disallows cleartext traffic once TLS lands (`SERVER-06`).
+
+---
+
+### CLIENT-MOBILE-07 — Local database encryption — **DONE**
+
+The Android message database is SQLCipher-encrypted as a whole file. This closes the last case of
+plaintext message history at rest, and covers more than the desktop's column-level scheme does: the
+participants, timestamps and message counts are inside the encrypted file rather than beside it.
+
+**Verified, not assumed.** The vulnerability was demonstrated first — `run-as` on a running emulator
+plus `grep` pulled three real message bodies straight out of `chat.db-wal`. After the change the same
+command returns nothing and the file no longer carries the `SQLite format 3` header.
+
+**Priority:** P1 · **Depends on:** `CLIENT-MOBILE-02`, `CORE-02` · **Estimate:** 1 day
+
+**Action items (as built):**
+1. `DatabaseKeyStore` generates a random 256-bit database key once and wraps it with an
+   `AndroidKeyStore` AES-GCM key that never leaves the keystore. Only the wrapped blob reaches
+   preferences. SQLCipher needs the raw bytes in memory to open the file, so the key itself cannot
+   live in the keystore — wrapping is what makes the stored form useless off-device.
+2. `AppDatabase` opens Room through `SupportOpenHelperFactory`; the key bytes are zeroed in a
+   `finally` once the factory holds them.
+3. `DatabaseProvider` migrates a pre-encryption database on first launch: read rows, close, delete
+   the file and its `-wal`/`-shm` sidecars, reinsert through the encrypted handle. It runs on a
+   worker thread, because Room refuses database work on the main thread.
+4. The migration is gated on an explicit `database.encrypted` marker, **not** on whether a key
+   exists. Opening the database creates a key as a side effect, so keying off that would skip the
+   migration forever after one failed attempt and strand the history behind a file nothing opens —
+   which is exactly what happened during development.
+5. `DatabaseEncryptionTest` (instrumented, 8 tests) reads the raw file and its write-ahead log back
+   and asserts the message text, the peer ids and the plain SQLite header are all absent; that the
+   data round-trips; that the wrong key cannot open the file; and that the unwrapped key is not in
+   preferences.
+
+**Acceptance criteria:** met. 10/10 instrumented tests pass on device, the migration carried 4
+existing messages across, and grepping the raw database for known message bodies returns nothing.
 
 ---
 
@@ -922,7 +958,7 @@ BUILD-01 ──┬── CORE-01 ──┬── CORE-03 ──┬── SERVER-
 | R7 | Relay is a single point of failure and a metadata honeypot, contradicting the "decentralized" README claim | Medium | Medium | Be accurate in docs today; `FUTURE-04` for multi-relay/P2P |
 | R8 | Scope creep into group chat / multi-device before 1:1 is solid | Medium | Medium | Both are explicitly out of scope in §2.1 |
 | R9 | R8/ProGuard breaks reflection-dependent Room or crypto code in release builds only | Medium | High | `REL-02` step 4 — CI must build and test the release variant |
-| R10 | Plaintext at rest on a lost device | Medium | Medium | `CLIENT-DESKTOP-05`; documented as a known v1.0 limitation until then |
+| R10 | Plaintext at rest on a lost device | Medium | Medium | **Closed.** `CLIENT-DESKTOP-05` (column-level, PBKDF2) and `CLIENT-MOBILE-07` (SQLCipher whole-file, keystore-wrapped) |
 
 ---
 
