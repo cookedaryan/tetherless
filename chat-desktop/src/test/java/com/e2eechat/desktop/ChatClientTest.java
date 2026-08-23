@@ -3,6 +3,7 @@ import com.e2eechat.core.network.MessageListener;
 import com.e2eechat.core.network.ConnectionState;
 import com.e2eechat.core.network.ConnectionManager;
 
+import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.core.keys.IdentityKeyStore;
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
@@ -31,6 +32,11 @@ public class ChatClientTest {
     private ChatClient bobClient;
     private List<Message> aliceToBob;
     private List<Message> bobToAlice;
+    private String aliceIdStr;
+    private String bobIdStr;
+
+    @org.junit.Rule
+    public org.junit.rules.TemporaryFolder tmp = new org.junit.rules.TemporaryFolder();
 
     @Before
     public void setUp() throws Exception {
@@ -38,7 +44,14 @@ public class ChatClientTest {
         kpg.initialize(2048);
         KeyPair aliceId = kpg.generateKeyPair();
         KeyPair bobId = kpg.generateKeyPair();
-        
+
+        // Ids are derived from the identity keys. A HELLO whose sender id is not the hash of the
+        // key it carries is now rejected, so the test has to use real ids rather than "Alice".
+        aliceIdStr = PeerId.of(aliceId.getPublic());
+        bobIdStr = PeerId.of(bobId.getPublic());
+        java.io.File dirA = tmp.newFolder("alice");
+        java.io.File dirB = tmp.newFolder("bob");
+
         SecretKey dbKey = new SecretKeySpec(new byte[32], "AES");
         
         aliceToBob = new ArrayList<>();
@@ -66,13 +79,13 @@ public class ChatClientTest {
             @Override public String fingerprint(PublicKey key) { return "alice-fp"; }
         };
 
-        Function<String, PublicKey> aliceLookup = id -> "Bob".equals(id) ? bobId.getPublic() : null;
-        Function<String, PublicKey> bobLookup = id -> "Alice".equals(id) ? aliceId.getPublic() : null;
+        Function<String, PublicKey> aliceLookup = id -> bobIdStr.equals(id) ? bobId.getPublic() : null;
+        Function<String, PublicKey> bobLookup = id -> aliceIdStr.equals(id) ? aliceId.getPublic() : null;
 
-        SessionManager aliceSM = new SessionManager("Alice", aliceLookup);
-        SessionManager bobSM = new SessionManager("Bob", bobLookup);
+        SessionManager aliceSM = new SessionManager(aliceIdStr, aliceLookup);
+        SessionManager bobSM = new SessionManager(bobIdStr, bobLookup);
 
-        aliceClient = new ChatClient("Alice", aliceId, aliceSM, dummyRepoAlice, dummyStoreAlice) {
+        aliceClient = new ChatClient(aliceIdStr, aliceId, aliceSM, dummyRepoAlice, dummyStoreAlice, new PeerDirectory(dirA), "Alice") {
             // Mock connection manager
             @Override
             public void startSecureChat(String peerId) {
@@ -88,7 +101,7 @@ public class ChatClientTest {
         };
         
         // Use reflection or just a custom ConnectionManager to mock the network
-        ConnectionManager mockAliceConn = new ConnectionManager("localhost", 0, "Alice", aliceClient) {
+        ConnectionManager mockAliceConn = new ConnectionManager("localhost", 0, aliceIdStr, aliceClient) {
             @Override public void sendMessage(Message msg) { 
                 System.out.println("ALICE SENDING: " + msg.getType());
                 aliceToBob.add(msg); 
@@ -97,8 +110,8 @@ public class ChatClientTest {
             @Override public void start() {}
         };
         
-        bobClient = new ChatClient("Bob", bobId, bobSM, dummyRepoBob, dummyStoreBob);
-        ConnectionManager mockBobConn = new ConnectionManager("localhost", 0, "Bob", bobClient) {
+        bobClient = new ChatClient(bobIdStr, bobId, bobSM, dummyRepoBob, dummyStoreBob, new PeerDirectory(dirB), "Bob");
+        ConnectionManager mockBobConn = new ConnectionManager("localhost", 0, bobIdStr, bobClient) {
             @Override public void sendMessage(Message msg) { 
                 System.out.println("BOB SENDING: " + msg.getType());
                 bobToAlice.add(msg); 
@@ -123,7 +136,7 @@ public class ChatClientTest {
 
     @Test
     public void testHandshakeAndEncryptedMessaging() {
-        aliceClient.startSecureChat("Bob");
+        aliceClient.startSecureChat(bobIdStr);
         
         System.out.println("Before assert, aliceToBob size: " + aliceToBob.size());
         // Alice should have sent HELLO and KEY_EXCHANGE_INIT
@@ -137,7 +150,7 @@ public class ChatClientTest {
         
         // Both sessions should be ESTABLISHED
         assertEquals(Session.State.ESTABLISHED, aliceClient.getSession().getState());
-        bobClient.setCurrentPeerId("Alice");
+        bobClient.setCurrentPeerId(aliceIdStr);
         assertEquals(Session.State.ESTABLISHED, bobClient.getSession().getState());
         
         // Now send an encrypted message
@@ -163,7 +176,7 @@ public class ChatClientTest {
 
     @Test
     public void testTamperedMessageRejected() throws Exception {
-        aliceClient.startSecureChat("Bob");
+        aliceClient.startSecureChat(bobIdStr);
         
         List<Message> receivedByBob = new ArrayList<>();
         bobClient.addMessageListener(new MessageListener() {
@@ -174,7 +187,7 @@ public class ChatClientTest {
         });
         
         // Intercept Alice's send
-        ConnectionManager tamperedConn = new ConnectionManager("localhost", 0, "Alice", aliceClient) {
+        ConnectionManager tamperedConn = new ConnectionManager("localhost", 0, aliceIdStr, aliceClient) {
             @Override public void sendMessage(Message msg) { 
                 if (msg.getType() == MessageType.TEXT_MESSAGE) {
                     byte[] payload = msg.getPayload();

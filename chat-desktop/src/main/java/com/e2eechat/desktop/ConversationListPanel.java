@@ -1,5 +1,6 @@
 package com.e2eechat.desktop;
 
+import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.desktop.ui.Avatars;
 import com.e2eechat.desktop.ui.EmojiText;
 import com.e2eechat.desktop.ui.IconButton;
@@ -244,8 +245,12 @@ public class ConversationListPanel extends JLayeredPane {
 
         javax.swing.JMenuItem identity = new javax.swing.JMenuItem("My identity…");
         identity.addActionListener(e -> JOptionPane.showMessageDialog(this,
-                "You are signed in as:\n\n" + client.getClientId()
-                        + "\n\nShare this id so others can start a secure chat with you.",
+                "You are signed in as:\n\n"
+                        + "  " + client.getLocalDisplayName() + "\n"
+                        + "  " + PeerId.forDisplay(client.getClientId())
+                        + "\n\nShare the id so others can start a secure chat with you.\n"
+                        + "It comes from your identity key, so it does not change if you\n"
+                        + "rename yourself - only your displayed name does.",
                 "My identity", JOptionPane.INFORMATION_MESSAGE));
         menu.add(identity);
 
@@ -264,13 +269,28 @@ public class ConversationListPanel extends JLayeredPane {
     }
 
     private void promptNewChat() {
-        String peerId = JOptionPane.showInputDialog(this,
-                "Enter the peer's id (for example alice@1a2b3c4d):",
+        String entered = JOptionPane.showInputDialog(this,
+                "Enter the peer's id (32 characters, e.g. 4f3a91c2-8b7e05d6-...):",
                 "New chat", JOptionPane.PLAIN_MESSAGE);
-        if (peerId == null || peerId.trim().isEmpty()) {
+        if (entered == null || entered.trim().isEmpty()) {
             return;
         }
-        openConversation(peerId.trim());
+        // Accept whatever form the user pasted - grouped, spaced, or upper case - but store the
+        // canonical id, since routing compares it byte for byte.
+        String peerId = PeerId.parse(entered);
+        if (peerId == null) {
+            JOptionPane.showMessageDialog(this,
+                    "That is not a peer id.\n\nAn id is 32 hex characters derived from the peer's\n"
+                            + "identity key. Ask them for it under Menu > My identity.",
+                    "New chat", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        if (peerId.equals(client.getClientId())) {
+            JOptionPane.showMessageDialog(this, "That is your own id.",
+                    "New chat", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        openConversation(peerId);
     }
 
     /** Selects an existing conversation or inserts a placeholder row for a brand-new peer. */
@@ -285,6 +305,7 @@ public class ConversationListPanel extends JLayeredPane {
         }
         Conversation fresh = new Conversation(peerId, "", System.currentTimeMillis(),
                 false, ChatMessage.Status.SENT, 0);
+        fresh.setDisplayName(client.displayNameFor(peerId));
         allConversations.add(0, fresh);
         searchField.setText("");
         applyFilter();
@@ -318,6 +339,10 @@ public class ConversationListPanel extends JLayeredPane {
             protected void done() {
                 try {
                     List<Conversation> loaded = get();
+                    // Names live in the peer directory now, not in the id, so resolve them here.
+                    for (Conversation c : loaded) {
+                        c.setDisplayName(client.displayNameFor(c.getPeerId()));
+                    }
                     // Keep any placeholder rows for peers with no messages yet.
                     for (Conversation existing : allConversations) {
                         boolean known = loaded.stream()
@@ -374,6 +399,7 @@ public class ConversationListPanel extends JLayeredPane {
         }
         Conversation updated = new Conversation(peerId, preview, timestamp, fromSelf,
                 ChatMessage.Status.SENT, unread);
+        updated.setDisplayName(client.displayNameFor(peerId));
         if (existing != null) {
             allConversations.remove(existing);
             updated.setVerified(existing.isVerified());

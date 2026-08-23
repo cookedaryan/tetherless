@@ -12,14 +12,13 @@ import java.util.Properties;
 /**
  * Persists the local user's display name across launches.
  *
- * <p>The peer id others use to reach you is {@code displayName@fingerprintPrefix}. The fingerprint
- * half comes from the identity key and is stable, but the name half was previously never stored:
- * it was collected on first run and then hardcoded to "Me" on every launch after, so a user's id
- * silently changed the second time they opened the app and contacts could no longer route to them.
- * Keeping the name here is what makes the id stable.
+ * <p>The name is a label only: peer ids are derived from the identity key, so renaming yourself no
+ * longer changes the address anyone routes to. It still has to persist, because it was previously
+ * collected on first run and then hardcoded to "Me" on every launch after, which made a peer's
+ * label change under them each time the app opened.
  *
- * <p>This is plain configuration, not secret material - the display name is broadcast in every
- * message header anyway - so it is stored unencrypted alongside the keystore.
+ * <p>This is plain configuration, not secret material - the name is sent to peers in every HELLO
+ * anyway - so it is stored unencrypted alongside the keystore.
  */
 public class ProfileStore {
 
@@ -68,7 +67,8 @@ public class ProfileStore {
         }
         props.setProperty(KEY_DISPLAY_NAME, normalized);
         try (FileOutputStream out = new FileOutputStream(file)) {
-            props.store(out, "Tetherless profile. display.name forms the first half of your peer id.");
+            props.store(out, "Tetherless profile. display.name is the label peers see; "
+                    + "your peer id comes from your identity key and is unaffected by it.");
         } catch (Exception e) {
             logger.error("Could not persist display name to {}", file, e);
         }

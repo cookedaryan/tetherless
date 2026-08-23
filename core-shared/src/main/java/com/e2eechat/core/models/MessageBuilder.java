@@ -9,7 +9,8 @@ public class MessageBuilder {
     private String messageId;
     private long timestamp;
     private byte[] iv;
-    private int protocolVersion = 1;
+    // Version 2: peer ids are key-derived and HELLO carries the display name as metadata.
+    private int protocolVersion = 2;
 
     public MessageBuilder setType(MessageType type) { this.type = type; return this; }
     public MessageBuilder setSenderId(String senderId) { this.senderId = senderId; return this; }

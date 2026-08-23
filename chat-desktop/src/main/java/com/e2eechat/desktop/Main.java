@@ -1,6 +1,7 @@
 package com.e2eechat.desktop;
 
 import com.e2eechat.core.crypto.DHUtils;
+import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.core.keys.JceKeyStoreManager;
 import com.e2eechat.core.session.SessionManager;
 
@@ -71,9 +72,9 @@ public class Main {
         ProfileStore profileStore = new ProfileStore(configDir);
         boolean isFirstRun = !new File(configDir, "identity.p12").exists();
 
-        // The display name forms the first half of the peer id others route to, so it has to come
-        // from storage rather than being re-derived per launch. A profile written before the name
-        // was persisted has none, in which case ask for it once.
+        // The display name is metadata sent in HELLO, not part of the peer id, but it still has to
+        // persist so a peer's label does not change every launch. A profile written before it was
+        // stored has none, in which case ask for it once.
         String storedName = profileStore.getDisplayName().orElse(null);
         final IdentityDialog.Mode dialogMode = isFirstRun
                 ? IdentityDialog.Mode.FIRST_RUN
@@ -126,7 +127,9 @@ public class Main {
             // attempt cannot overwrite a good name.
             profileStore.setDisplayName(displayName);
 
-            String clientId = displayName + "@" + fingerprint.substring(0, 8);
+            // The routing id is a pure function of the identity key. The display name is metadata,
+            // sent in HELLO, so renaming yourself no longer changes the address peers reach you at.
+            String clientId = PeerId.of(identity.getPublic());
             
             // Derive DB Key
             SecretKey dbKey = null;
@@ -155,7 +158,9 @@ public class Main {
             
             SessionManager sessionManager = new SessionManager(clientId, peerKeyLookup); 
             
-            ChatClient client = new ChatClient(clientId, identity, sessionManager, messageRepository, keyStoreManager);
+            PeerDirectory peerDirectory = new PeerDirectory(configDir);
+            ChatClient client = new ChatClient(clientId, identity, sessionManager, messageRepository,
+                    keyStoreManager, peerDirectory, displayName);
             
             ChatWindow window = new ChatWindow(client, fingerprint);
             

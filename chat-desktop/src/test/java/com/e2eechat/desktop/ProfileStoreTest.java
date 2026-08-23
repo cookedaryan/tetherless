@@ -34,22 +34,19 @@ public class ProfileStoreTest {
     }
 
     /**
-     * The regression this class exists for: the display name forms the first half of the peer id,
-     * and it used to be rebuilt as "Me" on every launch after the first, silently changing the id
-     * contacts route to.
+     * The regression this class exists for: the name was rebuilt as "Me" on every launch after the
+     * first. It no longer affects the peer id - {@code PeerIdTest} covers that the id is derived
+     * from the key alone - but a label that changes each launch is still wrong, so it stays pinned.
      */
     @Test
-    public void peerIdIsStableAcrossLaunches() {
-        String fingerprintPrefix = "A291:474";
-
+    public void labelIsStableAcrossLaunches() {
         new ProfileStore(configDir).setDisplayName("Aryan");
-        String firstLaunch = new ProfileStore(configDir).getDisplayName().get()
-                + "@" + fingerprintPrefix;
-        String secondLaunch = new ProfileStore(configDir).getDisplayName().get()
-                + "@" + fingerprintPrefix;
+
+        String firstLaunch = new ProfileStore(configDir).getDisplayName().get();
+        String secondLaunch = new ProfileStore(configDir).getDisplayName().get();
 
         assertEquals(firstLaunch, secondLaunch);
-        assertEquals("Aryan@A291:474", secondLaunch);
+        assertEquals("Aryan", secondLaunch);
     }
 
     @Test

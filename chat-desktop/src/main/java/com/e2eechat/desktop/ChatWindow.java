@@ -210,15 +210,12 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         }
     }
 
+    /**
+     * The label for a peer. Names are metadata a peer asserts about themselves, so this resolves
+     * through the directory and falls back to a short form of their id when none is known.
+     */
     private String displayNameOf(String id) {
-        if (id == null) {
-            return "";
-        }
-        if (id.equals(client.getClientId())) {
-            return "You";
-        }
-        int at = id.indexOf('@');
-        return at > 0 ? id.substring(0, at) : id;
+        return client.displayNameFor(id);
     }
 
     // ---------------------------------------------------------- protocol events

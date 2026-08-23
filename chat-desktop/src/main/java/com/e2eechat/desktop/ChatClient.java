@@ -5,6 +5,8 @@ import com.e2eechat.core.network.ConnectionState;
 import com.e2eechat.core.network.ConnectionManager;
 
 import com.e2eechat.core.crypto.AESUtils;
+import com.e2eechat.core.identity.PeerId;
+import com.e2eechat.core.protocol.HelloPayload;
 import com.e2eechat.core.crypto.DHUtils;
 import com.e2eechat.core.keys.IdentityKeyStore;
 import com.e2eechat.core.models.Message;
@@ -17,10 +19,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PublicKey;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -41,14 +41,56 @@ public class ChatClient implements MessageListener {
     private final List<MessageListener> listeners = new CopyOnWriteArrayList<>();
     private final List<Message> earlyMessageBuffer = new ArrayList<>();
 
+    /** Names peers have asked to be shown as; no longer derivable from their ids. */
+    private final PeerDirectory peerDirectory;
+
+    /** The name this client asks to be shown as. Metadata only - it is not part of our id. */
+    private volatile String localDisplayName;
+
     private String currentPeerId = null;
 
-    public ChatClient(String clientId, KeyPair identityKey, SessionManager sessionManager, MessageRepository messageRepository, IdentityKeyStore keyStoreManager) {
+    public ChatClient(String clientId, KeyPair identityKey, SessionManager sessionManager,
+                      MessageRepository messageRepository, IdentityKeyStore keyStoreManager,
+                      PeerDirectory peerDirectory, String localDisplayName) {
         this.clientId = clientId;
         this.identityKey = identityKey;
         this.sessionManager = sessionManager;
         this.messageRepository = messageRepository;
         this.keyStoreManager = keyStoreManager;
+        this.peerDirectory = peerDirectory;
+        this.localDisplayName = localDisplayName;
+    }
+
+    /** The label to show for a peer: their chosen name, else a short form of their id. */
+    public String displayNameFor(String peerId) {
+        if (peerId == null) {
+            return "";
+        }
+        if (peerId.equals(clientId)) {
+            return localDisplayName == null || localDisplayName.isEmpty() ? "You" : localDisplayName;
+        }
+        return peerDirectory.nameFor(peerId);
+    }
+
+    public PeerDirectory getPeerDirectory() {
+        return peerDirectory;
+    }
+
+    public String getLocalDisplayName() {
+        return localDisplayName;
+    }
+
+    /**
+     * Changes the name this client presents. Because the name is metadata rather than part of the
+     * id, this no longer changes the address peers route to - established sessions keep working.
+     */
+    public void setLocalDisplayName(String name) {
+        this.localDisplayName = name;
+    }
+
+    /** Our identity key plus the name we ask to be shown as, as a HELLO body. */
+    private byte[] helloPayload() throws Exception {
+        return HelloPayload.encode(identityKey.getPublic(), localDisplayName);
     }
 
     public void connect(String host, int port) {
@@ -116,7 +158,7 @@ public class ChatClient implements MessageListener {
                     .setType(MessageType.HELLO)
                     .setSenderId(clientId)
                     .setReceiverId(peerId)
-                    .setPayload(identityKey.getPublic().getEncoded())
+                    .setPayload(helloPayload())
                     .setMessageId(UUID.randomUUID().toString())
                     .setTimestamp(System.currentTimeMillis())
                     .buildUnsigned();
@@ -168,8 +210,21 @@ public class ChatClient implements MessageListener {
 
         try {
             if (msg.getType() == MessageType.HELLO) {
-                KeyFactory kf = KeyFactory.getInstance("RSA");
-                PublicKey receivedKey = kf.generatePublic(new X509EncodedKeySpec(msg.getPayload()));
+                HelloPayload hello = HelloPayload.decode(msg.getPayload());
+                PublicKey receivedKey = hello.getPublicKey();
+
+                // The sender's id must actually be the hash of the key they just presented.
+                // Without this a peer could claim someone else's address and, on a first contact,
+                // have their own key stored against it.
+                String derivedId = PeerId.of(receivedKey);
+                if (!derivedId.equals(msg.getSenderId())) {
+                    logger.warn("Dropping HELLO: sender id {} does not match its key ({})",
+                            msg.getSenderId(), derivedId);
+                    return;
+                }
+
+                // Self-asserted metadata, recorded for display only.
+                peerDirectory.setName(msg.getSenderId(), hello.getDisplayName());
 
                 Optional<PublicKey> existingKey = keyStoreManager.getPeerKey(msg.getSenderId());
                 if (!existingKey.isPresent()) {
@@ -181,7 +236,7 @@ public class ChatClient implements MessageListener {
                             .setType(MessageType.HELLO)
                             .setSenderId(clientId)
                             .setReceiverId(msg.getSenderId())
-                            .setPayload(identityKey.getPublic().getEncoded())
+                            .setPayload(helloPayload())
                             .setMessageId(UUID.randomUUID().toString())
                             .setTimestamp(System.currentTimeMillis())
                             .buildUnsigned();

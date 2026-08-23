@@ -38,6 +38,10 @@ A ticket is `Done` only when **all** of the following hold:
 - **Byte encoding:** all binary blobs crossing the wire are raw `byte[]`; Base64 is used *only* for display and on-disk text formats.
 - **Time:** all timestamps are `long` epoch milliseconds UTC, produced by a single injectable `Clock`.
 - **IDs:** `messageId` is a `java.util.UUID` rendered as a lowercase canonical string.
+- **Peer ids:** the first 16 bytes of SHA-256 over the identity public key, as 32 lowercase hex
+  characters (`PeerId`). Derived from the key alone, so a peer's address never changes when they
+  rename themselves. Display names are self-asserted metadata carried in `HELLO`, never part of the
+  address, and never evidence of identity — only the key and its safety number are.
 
 ---
 
@@ -268,7 +272,7 @@ Session states: `IDLE → HANDSHAKE_SENT → ESTABLISHED → EXPIRED`, plus term
 
    | `MessageType` | `payload` contains | `iv` used? | `signature` required? |
    |---|---|---|---|
-   | `HELLO` | encoded RSA public key (X.509) + client nonce | no | yes (self-signed proof of key possession) |
+   | `HELLO` | length-prefixed X.509 RSA public key + UTF-8 display name (see `HelloPayload`) | no | yes (self-signed proof of key possession) |
    | `HELLO_ACK` | server time + negotiated version | no | no |
    | `KEY_EXCHANGE_INIT` | encoded DH public key (X.509) + initiator nonce | no | **yes** |
    | `KEY_EXCHANGE_REPLY` | encoded DH public key (X.509) + responder nonce | no | **yes** |

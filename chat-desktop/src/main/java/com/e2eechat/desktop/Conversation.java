@@ -1,5 +1,7 @@
 package com.e2eechat.desktop;
 
+import com.e2eechat.core.identity.PeerId;
+
 /**
  * One row in the chat list: the peer, a preview of the most recent message, and unread state.
  *
@@ -14,6 +16,7 @@ public class Conversation {
     private final boolean lastFromSelf;
     private final ChatMessage.Status lastStatus;
 
+    private String displayName;
     private int unreadCount;
     private boolean online;
     private boolean verified;
@@ -28,15 +31,31 @@ public class Conversation {
         this.unreadCount = unreadCount;
     }
 
-    /** Peer id as it travels on the wire, e.g. {@code alice@1a2b3c4d}. */
+    /** Peer id as it travels on the wire: 32 hex characters derived from the peer's identity key. */
     public String getPeerId() {
         return peerId;
     }
 
-    /** The leading component of the peer id, which is what Telegram would show as a name. */
+    /**
+     * The label to show for this peer.
+     *
+     * <p>Peer ids no longer contain a name, so this is populated by the chat list from the peer
+     * directory. Until that happens it falls back to a short form of the id, which is always
+     * something the user can recognise.
+     */
     public String getDisplayName() {
-        int at = peerId.indexOf('@');
-        return at > 0 ? peerId.substring(0, at) : peerId;
+        if (displayName != null && !displayName.isEmpty()) {
+            return displayName;
+        }
+        if (PeerId.isLegacyFormat(peerId)) {
+            return peerId.substring(0, peerId.indexOf('@'));
+        }
+        return PeerId.shortForm(peerId);
+    }
+
+    /** Sets the resolved label; see {@link #getDisplayName()}. */
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
     }
 
     public String getLastMessage() {

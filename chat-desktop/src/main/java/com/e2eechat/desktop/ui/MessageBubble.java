@@ -1,5 +1,6 @@
 package com.e2eechat.desktop.ui;
 
+import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.desktop.ChatMessage;
 
 import javax.swing.Icon;
@@ -207,12 +208,18 @@ public class MessageBubble extends JComponent {
     }
 
     /**
-     * Peer ids travel as {@code name@fingerprint}. A quote header should read like a name, so trim
-     * the fingerprint the way the chat list and window header do.
+     * Label for the author of a quoted message.
+     *
+     * <p>The stored value is already a resolved display name for messages this client sent, and a
+     * peer id for older rows. Ids are shortened rather than printed in full, since a 32-character
+     * hex string as a quote header would swamp the quote itself.
      */
     private static String shortName(String id) {
         if (id == null) {
             return "";
+        }
+        if (PeerId.isValid(id)) {
+            return PeerId.shortForm(id);
         }
         int at = id.indexOf('@');
         return at > 0 ? id.substring(0, at) : id;
