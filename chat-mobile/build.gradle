@@ -42,6 +42,27 @@ android {
     }
 }
 
+// The client pins the relay's certificate, so the app cannot open a TLS connection without it. On
+// desktop TlsSupport can fall back to reading it from the working tree; on a device there is no
+// working tree, so it has to be packaged. Copying at build time keeps it in step with whatever
+// scripts/generate-dev-cert.sh produced, and keeps an uncommittable *.p12 out of the sources.
+def devCert = rootProject.file('chat-server/src/main/resources/dev-keystore.p12')
+
+tasks.register('copyDevCertificate', Copy) {
+    from devCert
+    into layout.buildDirectory.dir('generated/devCert')
+    onlyIf {
+        if (!devCert.exists()) {
+            logger.warn('dev-keystore.p12 not found - run scripts/generate-dev-cert.sh. '
+                    + 'The app will build but cannot connect to the relay.')
+        }
+        devCert.exists()
+    }
+}
+
+android.sourceSets.main.resources.srcDir(layout.buildDirectory.dir('generated/devCert'))
+tasks.named('preBuild') { dependsOn 'copyDevCertificate' }
+
 dependencies {
     implementation libs.slf4j.android
     implementation project(':core-shared')

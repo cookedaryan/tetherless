@@ -744,7 +744,17 @@ Session states: `IDLE → HANDSHAKE_SENT → ESTABLISHED → EXPIRED`, plus term
 
 ---
 
-### CLIENT-MOBILE-05 — Mobile crypto integration
+### CLIENT-MOBILE-05 — Mobile crypto integration — **DONE**
+
+The handshake and message crypto now live in `SecureChat` (core-shared) rather than being written
+a second time for Android; `ChatService` delegates to it. Identity is an `AndroidKeyStore` RSA key,
+so the private key is non-exportable. Verified against a live relay: desktop and Android completed a
+handshake and exchanged messages in both directions.
+
+**Remaining:** `chat-desktop`'s `ChatClient` still carries its own copy of the orchestration from
+before `SecureChat` existed. The interop run proves the two agree today, but converging desktop onto
+the shared engine is the follow-up that stops them drifting.
+
 **Priority:** P0 · **Depends on:** `CORE-04`, `CORE-05`, `CORE-07`, `CLIENT-MOBILE-03` · **Estimate:** 1.5 days
 
 **Action items:**

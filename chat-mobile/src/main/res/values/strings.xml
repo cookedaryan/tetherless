@@ -9,4 +9,5 @@
     <string name="status_connecting">Connecting...</string>
     <string name="status_connected">Connected to %1$s</string>
     <string name="status_key_changed">WARNING: Key Changed! Verify Safety Number.</string>
+    <string name="status_encrypted">End-to-end encrypted</string>
 </resources>

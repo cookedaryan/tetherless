@@ -92,28 +92,45 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Transport state is informational only; it never decides whether sending is safe.
         viewModel.getConnectionState().observe(this, state -> {
             binding.statusBar.setText(state);
-            if ("CONNECTED".equals(state) || "ESTABLISHED".equals(state)) {
-                binding.sendButton.setEnabled(true);
-                binding.statusBar.setBackgroundColor(getResources().getColor(R.color.colorAccent, null));
-            } else if ("KEY_CHANGED".equals(state)) {
-                binding.statusBar.setText(R.string.status_key_changed);
-                binding.statusBar.setBackgroundColor(getResources().getColor(R.color.warning_red, null));
-                binding.sendButton.setEnabled(false);
-                
-                new androidx.appcompat.app.AlertDialog.Builder(this)
-                        .setTitle("Trust Verification")
-                        .setMessage("The identity key for this peer has changed or is new.\n\nSafety Number: " + viewModel.getCurrentSafetyNumber())
-                        .setPositiveButton("Verify & Trust", (dialog, which) -> {
-                            viewModel.trustCurrentPeer();
-                        })
-                        .setNegativeButton("Block", (dialog, which) -> {})
-                        .setCancelable(false)
-                        .show();
-            } else {
-                binding.sendButton.setEnabled(true);
+            binding.statusBar.setBackgroundColor(
+                    getResources().getColor("CONNECTED".equals(state)
+                            ? R.color.colorAccent : R.color.warning_red, null));
+        });
+
+        // Sending is gated on the session, not the connection. There is deliberately no plaintext
+        // fallback, so an unestablished session means the composer stays disabled.
+        viewModel.getSessionState().observe(this, state -> {
+            boolean established = "ESTABLISHED".equals(state);
+            binding.sendButton.setEnabled(established);
+            binding.messageInput.setEnabled(established);
+            if (established) {
+                binding.statusBar.setText(R.string.status_encrypted);
+                binding.statusBar.setBackgroundColor(
+                        getResources().getColor(R.color.colorAccent, null));
             }
+        });
+
+        // Key changes and authentication failures must be seen, not buried in a log.
+        viewModel.getSecurityAlert().observe(this, alert -> {
+            if (alert == null || alert.isEmpty()) {
+                return;
+            }
+            binding.sendButton.setEnabled(false);
+            binding.statusBar.setText(R.string.status_key_changed);
+            binding.statusBar.setBackgroundColor(
+                    getResources().getColor(R.color.warning_red, null));
+
+            String safetyNumber = viewModel.getCurrentSafetyNumber();
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Security warning")
+                    .setMessage(alert + "\n\nSafety number:\n"
+                            + (safetyNumber == null ? "(no key received yet)" : safetyNumber))
+                    .setPositiveButton("OK", (dialog, which) -> { })
+                    .setCancelable(false)
+                    .show();
         });
         
         binding.chatRecyclerView.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {

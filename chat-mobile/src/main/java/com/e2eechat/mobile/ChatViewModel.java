@@ -18,6 +18,8 @@ public class ChatViewModel extends AndroidViewModel {
     
     // UI state for connection
     private final MutableLiveData<String> connectionState = new MutableLiveData<>("DISCONNECTED");
+    private final MutableLiveData<String> sessionState = new MutableLiveData<>("IDLE");
+    private final MutableLiveData<String> securityAlert = new MutableLiveData<>();
 
     public ChatViewModel(@NonNull Application application) {
         super(application);
@@ -29,10 +31,16 @@ public class ChatViewModel extends AndroidViewModel {
         );
     }
 
+    /**
+     * Opens a conversation and begins its key exchange. Selecting a peer used only to change the
+     * displayed conversation, so the session stayed IDLE and the composer never unlocked.
+     */
     public void setConversationId(String peerId) {
         currentConversationId.setValue(peerId);
-        // Here we would also bind to ChatService to connect
-        connectionState.setValue("CONNECTING");
+        sessionState.setValue("HANDSHAKE_SENT");
+        if (chatService != null) {
+            chatService.startSecureChat(peerId);
+        }
     }
 
     public LiveData<List<MessageEntity>> getMessages() {
@@ -47,42 +55,57 @@ public class ChatViewModel extends AndroidViewModel {
 
     public void setChatService(ChatService chatService) {
         this.chatService = chatService;
-        // Bind service states
-        chatService.getConnectionStateLiveData().observeForever(state -> {
-            connectionState.postValue(state);
-        });
+        chatService.getConnectionStateLiveData().observeForever(connectionState::postValue);
+        chatService.getSessionStateLiveData().observeForever(sessionState::postValue);
+        chatService.getSecurityAlertLiveData().observeForever(securityAlert::postValue);
     }
 
+    /** Whether the key exchange with the open conversation has completed. */
+    public LiveData<String> getSessionState() {
+        return sessionState;
+    }
+
+    /** Key changes and authentication failures the user must be shown. */
+    public LiveData<String> getSecurityAlert() {
+        return securityAlert;
+    }
+
+    /**
+     * Sends a message. Persistence, encryption and signing all happen in {@link ChatService} on its
+     * crypto thread; this only forwards. The view model used to write the row itself, which meant
+     * the message existed in two places and could be stored without ever being encrypted.
+     */
     public void sendMessage(String text) {
         String peerId = currentConversationId.getValue();
-        if (peerId == null || text.trim().isEmpty()) return;
-        
-        // Save to DB immediately as pending
-        MessageEntity msg = new MessageEntity();
-        msg.messageId = java.util.UUID.randomUUID().toString();
-        msg.conversationId = peerId;
-        msg.content = text;
-        msg.direction = "OUT";
-        msg.deliveryState = "PENDING";
-        msg.sentAt = System.currentTimeMillis();
-        msg.receivedAt = msg.sentAt;
-        
-        new Thread(() -> {
-            messageDao.insert(msg);
-            if (chatService != null) {
-                chatService.sendTextMessage(peerId, text, msg.messageId);
-            }
-        }).start();
-    }
-    
-    public String getCurrentSafetyNumber() {
-        return "12345 67890 12345 67890";
-    }
-    
-    public void trustCurrentPeer() {
-        if (chatService != null) {
-            chatService.trustPeer(currentConversationId.getValue());
+        if (peerId == null || text.trim().isEmpty() || chatService == null) {
+            return;
         }
-        connectionState.setValue("ESTABLISHED");
+        chatService.sendTextMessage(peerId, text);
+    }
+
+    /**
+     * The safety number to compare with this peer out of band, or null if their key has not been
+     * received yet. Previously this returned a fixed string, which looked like verification while
+     * proving nothing.
+     */
+    public String getCurrentSafetyNumber() {
+        String peerId = currentConversationId.getValue();
+        if (peerId == null || chatService == null) {
+            return null;
+        }
+        return chatService.safetyNumberFor(peerId);
+    }
+
+    /** This device's own peer id, for sharing so others can start a chat. */
+    public String getOwnPeerId() {
+        return chatService == null ? null : chatService.getClientId();
+    }
+
+    /** Begins the key exchange with the open conversation. */
+    public void startSecureChat() {
+        String peerId = currentConversationId.getValue();
+        if (peerId != null && chatService != null) {
+            chatService.startSecureChat(peerId);
+        }
     }
 }
