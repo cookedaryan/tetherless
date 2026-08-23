@@ -812,7 +812,14 @@ CI runs it on an emulator via the `android-conformance` job.
 
 ---
 
-### INTEG-03 — Adversarial relay test
+### INTEG-03 — Adversarial relay test — **DONE**
+
+Delivered as `MaliciousRelay` (a relay free to rewrite, drop, reorder, replay and forge) and
+`AdversarialRelayTest` (13 scenarios). Each attack asserts what reached the user, not merely what
+was logged, and asserts the tamper actually fired so a scenario cannot pass vacuously. Validated by
+mutation: disabling the id-to-key binding check fails the HELLO-substitution test, and ignoring
+signature failures fails both the signature-stripping and the DH-substitution MITM tests.
+
 **Priority:** P1 · **Depends on:** `CORE-05`, `CORE-06` · **Estimate:** 1 day
 
 **Description:** The entire security claim of this project is "the relay cannot read or forge your messages." That claim should be tested, not assumed.
