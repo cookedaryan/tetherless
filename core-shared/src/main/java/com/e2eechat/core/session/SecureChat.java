@@ -290,7 +290,12 @@ public class SecureChat {
             throw new IllegalStateException("No established session with " + peerId);
         }
 
-        byte[] iv = sessionManager.generateIv(session, true);
+        // The direction bit must differ between the two peers. Both sides share one derived key and
+        // both count from zero, so passing a constant here made Alice's n-th message and Bob's
+        // n-th message use the same key and IV - which breaks AES-GCM outright. Deriving the bit
+        // from the ids gives each side a stable, opposite value without extra negotiation.
+        boolean lowSide = clientId.compareTo(peerId) < 0;
+        byte[] iv = sessionManager.generateIv(session, lowSide);
         byte[] ciphertext = AESUtils.encrypt(plaintext, session.getSecretKey(), iv);
 
         Message msg = new MessageBuilder()

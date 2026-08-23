@@ -112,10 +112,22 @@ public class SessionManager {
         return new ProcessResult(Outcome.DELIVER, msg.getPayload());
     }
     
-    public byte[] generateIv(Session session, boolean isInitiator) {
+    /**
+     * Builds the 96-bit GCM nonce as {@code [direction:4][counter:8]}.
+     *
+     * <p>Counter-based rather than random, because a random 96-bit nonce collides often enough to
+     * matter over a long session and GCM does not survive nonce reuse.
+     *
+     * @param directionBit must differ between the two peers of a session. They share one derived
+     *                     key and both count from zero, so if both sides pass the same value their
+     *                     n-th messages collide on key and nonce together, which leaks the XOR of
+     *                     the plaintexts and exposes the authentication subkey. Callers derive it
+     *                     from the peer ids rather than from who happened to start the handshake.
+     */
+    public byte[] generateIv(Session session, boolean directionBit) {
         long counter = session.getNextSendCounter();
         ByteBuffer bb = ByteBuffer.allocate(12);
-        bb.putInt(isInitiator ? 1 : 0);
+        bb.putInt(directionBit ? 1 : 0);
         bb.putLong(counter);
         return bb.array();
     }

@@ -13,6 +13,10 @@ plaintext.
 | `chat-desktop` | Java Swing + SQLite desktop client. |
 | `chat-mobile` | Android + Room mobile client. |
 
+**[docs/security.md](docs/security.md)** describes what the system protects, what it does not, and
+which tests back each claim. Read the limitations section before trusting it with anything that
+matters.
+
 See [docs/development_plan.md](docs/development_plan.md) for the ticket-wise plan, threat model,
 and definition of done.
 
