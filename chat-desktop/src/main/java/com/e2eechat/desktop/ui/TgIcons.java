@@ -357,4 +357,154 @@ public final class TgIcons {
             }
         };
     }
+
+    // ------------------------------------------------- glyphs for the redesign
+
+    /** Eye, with a stroke through it when the secret is currently visible. */
+    public static Icon eye(int size, boolean revealed) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.5 * u));
+            GeneralPath lid = new GeneralPath();
+            lid.moveTo(1.5 * u, 8 * u);
+            lid.quadTo(8 * u, 1.5 * u, 14.5 * u, 8 * u);
+            lid.quadTo(8 * u, 14.5 * u, 1.5 * u, 8 * u);
+            lid.closePath();
+            g2.draw(lid);
+            g2.draw(new Ellipse2D.Double(6 * u, 6 * u, 4 * u, 4 * u));
+            if (revealed) {
+                g2.draw(new java.awt.geom.Line2D.Double(3 * u, 13 * u, 13 * u, 3 * u));
+            }
+        });
+    }
+
+    /** Gear. */
+    public static Icon settings(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.5 * u));
+            double cx = 8 * u;
+            double cy = 8 * u;
+            g2.draw(new Ellipse2D.Double(cx - 2.4 * u, cy - 2.4 * u, 4.8 * u, 4.8 * u));
+            for (int i = 0; i < 8; i++) {
+                double angle = Math.PI * 2 * i / 8.0;
+                double inner = 4.2 * u;
+                double outer = 6.4 * u;
+                g2.draw(new java.awt.geom.Line2D.Double(
+                        cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner,
+                        cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer));
+            }
+        });
+    }
+
+    /** Head and shoulders. */
+    public static Icon person(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.5 * u));
+            g2.draw(new Ellipse2D.Double(5.2 * u, 2.2 * u, 5.6 * u, 5.6 * u));
+            GeneralPath body = new GeneralPath();
+            body.moveTo(2.5 * u, 14 * u);
+            body.quadTo(8 * u, 8.8 * u, 13.5 * u, 14 * u);
+            g2.draw(body);
+        });
+    }
+
+    /** Artist's palette, for the appearance section. */
+    public static Icon palette(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.5 * u));
+            GeneralPath p = new GeneralPath();
+            p.moveTo(8 * u, 1.8 * u);
+            p.curveTo(12.6 * u, 1.8 * u, 14.4 * u, 5 * u, 14.2 * u, 8 * u);
+            p.curveTo(14 * u, 10.6 * u, 11.6 * u, 10.2 * u, 10.6 * u, 11.2 * u);
+            p.curveTo(9.8 * u, 12.2 * u, 10.8 * u, 14.2 * u, 8 * u, 14.2 * u);
+            p.curveTo(4.4 * u, 14.2 * u, 1.8 * u, 11.4 * u, 1.8 * u, 8 * u);
+            p.curveTo(1.8 * u, 4.6 * u, 4.4 * u, 1.8 * u, 8 * u, 1.8 * u);
+            p.closePath();
+            g2.draw(p);
+            g2.fill(new Ellipse2D.Double(5 * u, 5 * u, 1.7 * u, 1.7 * u));
+            g2.fill(new Ellipse2D.Double(9 * u, 4.2 * u, 1.7 * u, 1.7 * u));
+            g2.fill(new Ellipse2D.Double(4 * u, 9 * u, 1.7 * u, 1.7 * u));
+        });
+    }
+
+    /** Key, for the security section. */
+    public static Icon key(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.5 * u));
+            g2.draw(new Ellipse2D.Double(2 * u, 5 * u, 6 * u, 6 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(7.6 * u, 8 * u, 14 * u, 8 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(11.5 * u, 8 * u, 11.5 * u, 10.6 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(13.6 * u, 8 * u, 13.6 * u, 11.4 * u));
+        });
+    }
+
+    /** Circled "i". */
+    public static Icon info(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.5 * u));
+            g2.draw(new Ellipse2D.Double(1.8 * u, 1.8 * u, 12.4 * u, 12.4 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(8 * u, 7.2 * u, 8 * u, 11.4 * u));
+            g2.fill(new Ellipse2D.Double(7.25 * u, 4.3 * u, 1.5 * u, 1.5 * u));
+        });
+    }
+
+    /** Plug, for the connection section. */
+    public static Icon plug(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.5 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(6 * u, 1.8 * u, 6 * u, 5 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(10 * u, 1.8 * u, 10 * u, 5 * u));
+            GeneralPath body = new GeneralPath();
+            body.moveTo(3.6 * u, 5 * u);
+            body.lineTo(12.4 * u, 5 * u);
+            body.lineTo(12.4 * u, 8 * u);
+            body.curveTo(12.4 * u, 11 * u, 9.8 * u, 11.6 * u, 9.8 * u, 11.6 * u);
+            body.lineTo(9.8 * u, 14.2 * u);
+            body.lineTo(6.2 * u, 14.2 * u);
+            body.lineTo(6.2 * u, 11.6 * u);
+            body.curveTo(6.2 * u, 11.6 * u, 3.6 * u, 11 * u, 3.6 * u, 8 * u);
+            body.closePath();
+            g2.draw(body);
+        });
+    }
+
+    public static Icon chevronRight(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.7 * u));
+            GeneralPath p = new GeneralPath();
+            p.moveTo(6 * u, 3.5 * u);
+            p.lineTo(10.5 * u, 8 * u);
+            p.lineTo(6 * u, 12.5 * u);
+            g2.draw(p);
+        });
+    }
+
+    public static Icon arrowLeft(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.7 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(13 * u, 8 * u, 3 * u, 8 * u));
+            GeneralPath head = new GeneralPath();
+            head.moveTo(7.5 * u, 3.5 * u);
+            head.lineTo(3 * u, 8 * u);
+            head.lineTo(7.5 * u, 12.5 * u);
+            g2.draw(head);
+        });
+    }
+
+    public static Icon plus(int size) {
+        return icon(size, (g2, s) -> {
+            double u = s / 16.0;
+            stroke(g2, (float) (1.8 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(8 * u, 3 * u, 8 * u, 13 * u));
+            g2.draw(new java.awt.geom.Line2D.Double(3 * u, 8 * u, 13 * u, 8 * u));
+        });
+    }
 }

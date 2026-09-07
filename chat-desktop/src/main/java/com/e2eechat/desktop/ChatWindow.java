@@ -11,6 +11,7 @@ import com.e2eechat.desktop.ui.IconButton;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
 import com.e2eechat.desktop.ui.TranscriptPanel;
+import com.e2eechat.desktop.ui.WelcomePane;
 
 import javax.swing.BorderFactory;
 import javax.swing.Icon;
@@ -74,7 +75,10 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         composer.setOnSend(this::onSend);
         composer.setOnTypingChanged(this::onLocalTypingChanged);
 
-        emptyState = TranscriptPanel.emptyState("Select a chat to start messaging");
+        emptyState = new WelcomePane("Welcome to Tetherless",
+                "Conversations start from a peer id. Share yours from Menu, or open a chat "
+                        + "with someone else's.",
+                true);
 
         rightPanel = new JPanel(new BorderLayout());
         rightPanel.add(header, BorderLayout.NORTH);

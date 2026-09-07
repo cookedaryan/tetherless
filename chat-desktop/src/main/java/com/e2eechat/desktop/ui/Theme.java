@@ -61,6 +61,34 @@ public final class Theme {
         LISTENERS.remove(l);
     }
 
+    /**
+     * Registers {@code onChange} for as long as {@code component} is on screen.
+     *
+     * <p>The listener list is static and lives for the life of the process, so a component that
+     * registers in its constructor and never deregisters keeps itself - and everything it
+     * references - alive forever. That is harmless for the main window, which is a singleton, and a
+     * genuine leak for anything transient: the sign-in dialog is constructed afresh on every failed
+     * attempt.
+     */
+    public static void follow(javax.swing.JComponent component, Runnable onChange) {
+        Listener listener = onChange::run;
+        component.addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.DISPLAYABILITY_CHANGED) == 0) {
+                return;
+            }
+            if (component.isDisplayable()) {
+                if (!LISTENERS.contains(listener)) {
+                    LISTENERS.add(listener);
+                }
+            } else {
+                LISTENERS.remove(listener);
+            }
+        });
+        if (component.isDisplayable()) {
+            LISTENERS.add(listener);
+        }
+    }
+
     // ---------------------------------------------------------------- colours
 
     private static Color pick(int lightRgb, int darkRgb) {

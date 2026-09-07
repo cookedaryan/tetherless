@@ -3,8 +3,6 @@ package com.e2eechat.desktop;
 import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.desktop.ui.Avatars;
 import com.e2eechat.desktop.ui.EmojiText;
-import com.e2eechat.core.build.BuildInfo;
-import com.e2eechat.core.network.TlsSupport;
 import com.e2eechat.desktop.ui.IconButton;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
@@ -245,58 +243,32 @@ public class ConversationListPanel extends JLayeredPane {
     private void showMenu(Component anchor) {
         javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
 
-        javax.swing.JMenuItem identity = new javax.swing.JMenuItem("My identity…");
-        identity.addActionListener(e -> JOptionPane.showMessageDialog(this,
-                "You are signed in as:\n\n"
-                        + "  " + client.getLocalDisplayName() + "\n"
-                        + "  " + PeerId.forDisplay(client.getClientId())
-                        + "\n\nShare the id so others can start a secure chat with you.\n"
-                        + "It comes from your identity key, so it does not change if you\n"
-                        + "rename yourself - only your displayed name does.",
-                "My identity", JOptionPane.INFORMATION_MESSAGE));
-        menu.add(identity);
-
         javax.swing.JMenuItem newChat = new javax.swing.JMenuItem("New chat…");
         newChat.addActionListener(e -> promptNewChat());
         menu.add(newChat);
 
         menu.addSeparator();
 
+        // Identity, appearance and version all moved into the settings sheet, which has the room to
+        // explain them. Night mode stays here too: it is the one setting people flip often enough
+        // to want without opening anything.
+        javax.swing.JMenuItem settings = new javax.swing.JMenuItem("Settings");
+        settings.addActionListener(e -> openSettings());
+        menu.add(settings);
+
         javax.swing.JCheckBoxMenuItem night = new javax.swing.JCheckBoxMenuItem("Night mode");
         night.setSelected(Theme.isDark());
         night.addActionListener(e -> Theme.toggle());
         menu.add(night);
 
-        menu.addSeparator();
-
-        javax.swing.JMenuItem about = new javax.swing.JMenuItem("About Tetherless");
-        about.addActionListener(e -> showAbout());
-        menu.add(about);
-
         menu.show(anchor, 0, anchor.getHeight());
     }
 
-    /**
-     * Identifies the build, and says plainly which certificate the connection trusts.
-     *
-     * <p>A version and a commit are what make a bug report actionable. The trust line is here for a
-     * different reason: a build still running on the development certificate offers no protection
-     * against interception, and the user deserves to be able to see that rather than infer it.
-     */
-    private void showAbout() {
-        String pinned = TlsSupport.configuredTrustStorePath();
-        String trust = pinned != null
-                ? "Pinned to the certificate at\n  " + pinned
-                : "Development certificate - NOT secure against interception.\n"
-                        + "Set 'truststore' in config.properties to pin the relay's certificate.";
-
-        JOptionPane.showMessageDialog(this,
-                "Tetherless " + BuildInfo.version() + "\n"
-                        + "Commit " + BuildInfo.commit()
-                        + " (" + BuildInfo.channel() + " build)\n"
-                        + "Built " + BuildInfo.buildTime() + "\n\n"
-                        + "Connection security:\n" + trust,
-                "About Tetherless", JOptionPane.INFORMATION_MESSAGE);
+    private void openSettings() {
+        java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
+        if (window instanceof java.awt.Frame) {
+            SettingsPanel.present((java.awt.Frame) window, client);
+        }
     }
 
     private void promptNewChat() {

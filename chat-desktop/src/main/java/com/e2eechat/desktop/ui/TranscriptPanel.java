@@ -201,9 +201,10 @@ public class TranscriptPanel extends JLayeredPane {
     }
 
     public void append(ChatMessage message) {
-        appendInternal(message);
+        BubbleRow arrived = appendInternal(message);
         column.revalidate();
         column.repaint();
+        arrived.playEntrance();
         if (isNearBottom()) {
             scrollToBottom(false);
         } else {
@@ -211,7 +212,7 @@ public class TranscriptPanel extends JLayeredPane {
         }
     }
 
-    private void appendInternal(ChatMessage message) {
+    private BubbleRow appendInternal(ChatMessage message) {
         LocalDate date = Instant.ofEpochMilli(message.getTimestamp())
                 .atZone(ZoneId.systemDefault()).toLocalDate();
 
@@ -241,6 +242,7 @@ public class TranscriptPanel extends JLayeredPane {
         messages.add(message);
         lastBubble = bubble;
         lastMessage = message;
+        return row;
     }
 
     private void addRow(Component row) {
@@ -376,6 +378,9 @@ public class TranscriptPanel extends JLayeredPane {
 
     /** Aligns one bubble to its side of the transcript with Telegram's margins. */
     private static class BubbleRow extends JPanel {
+        /** 1 = settled. Below 1 the row is faded and offset, for a message that just arrived. */
+        private float entrance = 1f;
+
         BubbleRow(MessageBubble bubble, boolean outgoing, boolean grouped) {
             setOpaque(false);
             setLayout(new BorderLayout());
@@ -386,6 +391,39 @@ public class TranscriptPanel extends JLayeredPane {
             holder.setOpaque(false);
             holder.add(bubble);
             add(holder, BorderLayout.CENTER);
+        }
+
+        /**
+         * Fades in and rises the last few pixels.
+         *
+         * <p>Called only for a message that arrives while the transcript is open. Playing this for
+         * every row when a conversation loads would be a hundred bubbles moving at once, which is
+         * noise rather than polish - the history was always there, and pretending it just arrived
+         * is a lie the animation tells.
+         */
+        void playEntrance() {
+            entrance = 0f;
+            Motion.animate(Motion.NORMAL, Motion.Easing.EASE_OUT, progress -> {
+                entrance = progress;
+                repaint();
+            }, null);
+        }
+
+        @Override
+        public void paint(Graphics g) {
+            if (entrance >= 1f) {
+                super.paint(g);
+                return;
+            }
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.translate(0, Math.round((1f - entrance) * 10f));
+                g2.setComposite(java.awt.AlphaComposite.getInstance(
+                        java.awt.AlphaComposite.SRC_OVER, Math.max(0f, entrance)));
+                super.paint(g2);
+            } finally {
+                g2.dispose();
+            }
         }
 
         @Override

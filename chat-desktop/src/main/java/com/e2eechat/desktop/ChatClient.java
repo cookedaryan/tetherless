@@ -52,6 +52,8 @@ public class ChatClient implements MessageListener {
     private final SecureChat secureChat;
 
     private ConnectionManager connectionManager;
+    private String relayHost;
+    private int relayPort;
     private final List<MessageListener> listeners = new CopyOnWriteArrayList<>();
     private final List<Message> earlyMessageBuffer = new ArrayList<>();
 
@@ -89,8 +91,15 @@ public class ChatClient implements MessageListener {
         if (connectionManager != null) {
             return;
         }
+        this.relayHost = host;
+        this.relayPort = port;
         connectionManager = new ConnectionManager(host, port, clientId, this);
         connectionManager.start();
+    }
+
+    /** Where this client is pointed, for the settings sheet. */
+    public String getRelayDescription() {
+        return relayHost == null ? "Not connected" : relayHost + ":" + relayPort;
     }
 
     public void disconnect() {
