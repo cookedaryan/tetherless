@@ -6,6 +6,35 @@ plugins {
     id "com.github.spotbugs" version "6.0.7" apply false
 }
 
+ext {
+    // One flag decides both the artifact version and whether TlsSupport will accept the
+    // development certificate. See BuildInfo.
+    isReleaseBuild = project.hasProperty('releaseBuild')
+    appVersion = isReleaseBuild ? '1.0.0' : '1.0.0-SNAPSHOT'
+    buildChannel = isReleaseBuild ? 'release' : 'dev'
+
+    // Stamped from the commit rather than the wall clock, so the same commit always produces the
+    // same properties file.
+    gitCommit = {
+        try {
+            def p = ['git', 'rev-parse', '--short', 'HEAD'].execute(null, rootDir)
+            p.waitForOrKill(5000)
+            return p.exitValue() == 0 ? p.text.trim() : 'unknown'
+        } catch (Exception ignored) {
+            return 'unknown'
+        }
+    }()
+    gitCommitDate = {
+        try {
+            def p = ['git', 'log', '-1', '--format=%cd', '--date=iso-strict'].execute(null, rootDir)
+            p.waitForOrKill(5000)
+            return p.exitValue() == 0 ? p.text.trim() : 'unknown'
+        } catch (Exception ignored) {
+            return 'unknown'
+        }
+    }()
+}
+
 allprojects {
     repositories {
         google()
@@ -14,7 +43,7 @@ allprojects {
 }
 
 subprojects { project ->
-    version = '1.0-SNAPSHOT'
+    version = rootProject.ext.appVersion
     
     project.apply plugin: 'checkstyle'
     project.checkstyle {

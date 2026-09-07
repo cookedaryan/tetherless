@@ -80,6 +80,25 @@ On first launch the client asks for a display name and a passphrase, generates y
 and stores it under `~/.tetherless/`. Your peer id is shown under **Menu → My identity**; share it
 so others can start a secure chat with you.
 
+
+## Packaging a release
+
+```bash
+./gradlew :chat-desktop:packageAppImage -PreleaseBuild
+```
+
+This produces a self-contained application in `chat-desktop/build/jpackage/` that bundles its own
+Java runtime — users need no JDK. Use `packageInstaller` instead for a native `.msi`/`.dmg`/`.deb`
+(the Windows target needs the [WiX Toolset](https://wixtoolset.org/)).
+
+`-PreleaseBuild` is not optional, and the tasks refuse to run without it. It stamps the build as a
+release, which is what makes the client **refuse to fall back to the development certificate** — a
+certificate whose private key is reproducible by anyone with this repository. A packaged client
+will not connect until you configure a real one.
+
+**[docs/deployment.md](docs/deployment.md)** walks through generating a certificate, configuring the
+relay and clients, and what is still missing before this is genuinely shippable.
+
 ## Verifying a contact
 
 Signatures only prove a key is consistent, not that it belongs to the right person. Open the shield

@@ -3,6 +3,8 @@ package com.e2eechat.desktop;
 import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.desktop.ui.Avatars;
 import com.e2eechat.desktop.ui.EmojiText;
+import com.e2eechat.core.build.BuildInfo;
+import com.e2eechat.core.network.TlsSupport;
 import com.e2eechat.desktop.ui.IconButton;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
@@ -265,7 +267,36 @@ public class ConversationListPanel extends JLayeredPane {
         night.addActionListener(e -> Theme.toggle());
         menu.add(night);
 
+        menu.addSeparator();
+
+        javax.swing.JMenuItem about = new javax.swing.JMenuItem("About Tetherless");
+        about.addActionListener(e -> showAbout());
+        menu.add(about);
+
         menu.show(anchor, 0, anchor.getHeight());
+    }
+
+    /**
+     * Identifies the build, and says plainly which certificate the connection trusts.
+     *
+     * <p>A version and a commit are what make a bug report actionable. The trust line is here for a
+     * different reason: a build still running on the development certificate offers no protection
+     * against interception, and the user deserves to be able to see that rather than infer it.
+     */
+    private void showAbout() {
+        String pinned = TlsSupport.configuredTrustStorePath();
+        String trust = pinned != null
+                ? "Pinned to the certificate at\n  " + pinned
+                : "Development certificate - NOT secure against interception.\n"
+                        + "Set 'truststore' in config.properties to pin the relay's certificate.";
+
+        JOptionPane.showMessageDialog(this,
+                "Tetherless " + BuildInfo.version() + "\n"
+                        + "Commit " + BuildInfo.commit()
+                        + " (" + BuildInfo.channel() + " build)\n"
+                        + "Built " + BuildInfo.buildTime() + "\n\n"
+                        + "Connection security:\n" + trust,
+                "About Tetherless", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void promptNewChat() {

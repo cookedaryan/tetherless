@@ -53,7 +53,6 @@ public class Composer extends JPanel {
     private final JTextArea input = new JTextArea(1, 20);
     private final ReplyBanner replyBanner = new ReplyBanner();
     private final IconButton emojiButton;
-    private final IconButton attachButton;
     private final IconButton sendButton;
 
     private final Timer typingIdleTimer;
@@ -61,7 +60,6 @@ public class Composer extends JPanel {
 
     private Consumer<String> onSend = t -> { };
     private Consumer<Boolean> onTypingChanged = t -> { };
-    private Runnable onAttach = () -> { };
 
     private ChatMessage replyTarget;
 
@@ -85,12 +83,10 @@ public class Composer extends JPanel {
         inputScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 
         emojiButton = new IconButton(() -> TgIcons.emoji(22), "Emoji");
-        attachButton = new IconButton(() -> TgIcons.attach(22), "Attach file");
         sendButton = new IconButton(() -> TgIcons.send(21), "Send",
                 Theme::accent, Theme::accentHover);
 
         emojiButton.addActionListener(e -> openEmojiPicker());
-        attachButton.addActionListener(e -> onAttach.run());
         sendButton.addActionListener(e -> send());
 
         Card card = new Card();
@@ -102,7 +98,6 @@ public class Composer extends JPanel {
         JPanel trailing = new JPanel();
         trailing.setOpaque(false);
         trailing.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
-        trailing.add(attachButton);
         trailing.add(sendButton);
         card.add(trailing, BorderLayout.EAST);
 
@@ -259,10 +254,6 @@ public class Composer extends JPanel {
         this.onTypingChanged = onTypingChanged == null ? t -> { } : onTypingChanged;
     }
 
-    public void setOnAttach(Runnable onAttach) {
-        this.onAttach = onAttach == null ? () -> { } : onAttach;
-    }
-
     /**
      * Enables or disables composing. Disabled whenever the session is not established — the client
      * must never offer a plaintext fallback.
@@ -270,7 +261,6 @@ public class Composer extends JPanel {
     public void setComposingEnabled(boolean enabled) {
         input.setEnabled(enabled);
         sendButton.setEnabled(enabled);
-        attachButton.setEnabled(enabled);
         emojiButton.setEnabled(enabled);
         repaint();
     }

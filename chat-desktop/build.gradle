@@ -22,3 +22,85 @@ dependencies {
     implementation libs.sqlite.jdbc
     testImplementation libs.junit
 }
+
+// ---------------------------------------------------------------- packaging
+//
+// jpackage produces a self-contained application: the user needs no JDK. Two targets, because they
+// have different prerequisites - 'app-image' is a runnable directory and always works, while the
+// native installer needs the WiX Toolset on Windows and will fail loudly without it.
+//
+// Both refuse to run without -PreleaseBuild. That is not bureaucracy: the release flag is what
+// stamps channel=release into build-info.properties, and that stamp is what stops the packaged
+// client from falling back to the development certificate. Shipping a dev-stamped build would hand
+// users an app that trusts a certificate whose private key is public.
+
+def jpackageOut = layout.buildDirectory.dir('jpackage')
+def appIcon = file('src/main/resources/tetherless.ico')
+
+// jpackage rejects a version that is not strictly numeric on Windows, so SNAPSHOT is trimmed.
+def packageVersion = rootProject.ext.appVersion.replaceAll('-.*$', '')
+
+def jpackageExecutable = {
+    def home = System.getProperty('java.home')
+    def name = org.gradle.internal.os.OperatingSystem.current().isWindows()
+            ? 'jpackage.exe' : 'jpackage'
+    def candidate = new File(new File(home, 'bin'), name)
+    return candidate.isFile() ? candidate.absolutePath : name
+}()
+
+def commonJpackageArgs = { String type ->
+    def args = [
+        '--type', type,
+        '--name', 'Tetherless',
+        '--app-version', packageVersion,
+        '--vendor', 'Tetherless',
+        '--description', 'End-to-end encrypted chat',
+        '--input', layout.buildDirectory.dir('install/chat-desktop/lib').get().asFile.absolutePath,
+        '--main-jar', "chat-desktop-${rootProject.ext.appVersion}.jar".toString(),
+        '--main-class', 'com.e2eechat.desktop.Main',
+        '--dest', jpackageOut.get().asFile.absolutePath,
+    ]
+    if (appIcon.isFile()) {
+        args += ['--icon', appIcon.absolutePath]
+    }
+    return args
+}
+
+def requireReleaseBuild = {
+    if (!rootProject.ext.isReleaseBuild) {
+        throw new GradleException(
+                'Packaging requires -PreleaseBuild. Without it the artifact is stamped '
+                        + 'channel=dev, and TlsSupport would let it fall back to the development '
+                        + 'certificate. Run: ./gradlew :chat-desktop:packageAppImage -PreleaseBuild')
+    }
+}
+
+tasks.register('packageAppImage', Exec) {
+    group = 'distribution'
+    description = 'Builds a self-contained application directory with jpackage.'
+    dependsOn 'installDist'
+    doFirst {
+        requireReleaseBuild()
+        delete(jpackageOut.get().asFile)
+        jpackageOut.get().asFile.mkdirs()
+    }
+    commandLine([jpackageExecutable] + commonJpackageArgs('app-image'))
+}
+
+tasks.register('packageInstaller', Exec) {
+    group = 'distribution'
+    description = 'Builds a native installer (.msi on Windows) with jpackage. Needs WiX on Windows.'
+    dependsOn 'installDist'
+    doFirst {
+        requireReleaseBuild()
+        jpackageOut.get().asFile.mkdirs()
+    }
+    def type = org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'msi'
+            : (org.gradle.internal.os.OperatingSystem.current().isMacOsX() ? 'dmg' : 'deb')
+    def args = commonJpackageArgs(type)
+    if (type == 'msi') {
+        // A per-user install needs no administrator, and a shortcut makes it findable.
+        args += ['--win-shortcut', '--win-menu', '--win-per-user-install', '--win-dir-chooser']
+    }
+    commandLine([jpackageExecutable] + args)
+}

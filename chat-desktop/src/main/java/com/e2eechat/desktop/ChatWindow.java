@@ -73,11 +73,6 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
 
         composer.setOnSend(this::onSend);
         composer.setOnTypingChanged(this::onLocalTypingChanged);
-        composer.setOnAttach(() -> JOptionPane.showMessageDialog(this,
-                "File attachments are not implemented yet.\n"
-                        + "Sending a file needs a chunked, separately-keyed transfer that the relay "
-                        + "does not support today.",
-                "Attachments", JOptionPane.INFORMATION_MESSAGE));
 
         emptyState = TranscriptPanel.emptyState("Select a chat to start messaging");
 

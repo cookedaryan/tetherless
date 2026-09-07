@@ -16,3 +16,20 @@ dependencies {
     // Explicitly forbid any Android or JavaFX dependency here — this module must stay platform-neutral.
 }
 
+
+// Stamps the build so BuildInfo can report a version and, more importantly, so TlsSupport can tell
+// a packaged build from a development one. WriteProperties is used rather than a doLast that calls
+// Properties.store: it omits the usual timestamp comment, so the file is byte-identical for a given
+// commit and does not defeat the build cache.
+def buildInfoDir = layout.buildDirectory.dir('generated/buildInfo')
+
+tasks.register('buildInfo', WriteProperties) {
+    destinationFile = buildInfoDir.map { it.file('build-info.properties') }
+    property 'version', rootProject.ext.appVersion
+    property 'commit', rootProject.ext.gitCommit
+    property 'buildTime', rootProject.ext.gitCommitDate
+    property 'channel', rootProject.ext.buildChannel
+}
+
+sourceSets.main.resources.srcDir(buildInfoDir)
+tasks.named('processResources') { dependsOn 'buildInfo' }

@@ -4,24 +4,25 @@ import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.core.keys.JceKeyStoreManager;
 import com.e2eechat.core.session.SessionManager;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.crypto.SecretKey;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
-import java.io.FileInputStream;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.function.Function;
 
 public class Main {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+
     public static void main(String[] args) {
-        String host = "localhost";
-        int port = 8080;
-        
         String configDirPath = System.getProperty("tetherless.config.dir", 
                 new File(System.getProperty("user.home"), ".tetherless").getAbsolutePath());
         if (configDirPath.startsWith("\"") && configDirPath.endsWith("\"")) {
@@ -31,7 +32,7 @@ public class Main {
         
         if (!configDir.exists()) {
             if (!configDir.mkdirs()) {
-                System.err.println("Failed to create config directory: " + configDir.getAbsolutePath());
+                LOG.error("Failed to create config directory: {}", configDir.getAbsolutePath());
                 JOptionPane.showMessageDialog(null, "Failed to create config directory: " + configDir.getAbsolutePath());
                 System.exit(1);
             }
@@ -40,30 +41,14 @@ public class Main {
         String dbPath = new File(configDir, "chat.db").getAbsolutePath();
         DatabaseHelper.initializeDatabase(dbPath);
         
-        File configFile = new File(configDir, "config.properties");
-        if (configFile.exists()) {
-            Properties props = new Properties();
-            try (FileInputStream fis = new FileInputStream(configFile)) {
-                props.load(fis);
-                host = props.getProperty("host", host);
-                String portStr = props.getProperty("port");
-                if (portStr != null) {
-                    port = Integer.parseInt(portStr);
-                }
-            } catch (Exception e) {
-                System.err.println("Failed to load config properties: " + e.getMessage());
-            }
-        }
-        
-        if (args.length > 0) {
-            host = args[0];
-        }
-        if (args.length > 1) {
-            try { port = Integer.parseInt(args[1]); } catch (NumberFormatException ignored) {}
-        }
-        
-        final String finalHost = host;
-        final int finalPort = port;
+        // Resolves host, port and - critically - which certificate the client pins. A packaged
+        // build with nothing configured will refuse to connect rather than trust the development
+        // certificate; see TlsSupport.
+        DesktopConfig config = DesktopConfig.load(configDir, args);
+        config.applyTlsProperties();
+
+        final String finalHost = config.host();
+        final int finalPort = config.port();
         
         JceKeyStoreManager keyStoreManager = new JceKeyStoreManager(configDir);
         ProfileStore profileStore = new ProfileStore(configDir);
@@ -176,7 +161,7 @@ public class Main {
                     Optional<PublicKey> opt = keyStoreManager.getPeerKey(senderId);
                     return opt.orElse(null);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.warn("No stored key for peer {}: {}", senderId, e.toString());
                     return null;
                 }
             };
