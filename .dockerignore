@@ -1,0 +1,43 @@
+# Keeps the build context small and, more importantly, keeps secrets and local state out of it.
+# Anything sent to the daemon can end up in an image layer.
+
+# Never send keys or certificates. The relay's keystore is mounted at run time.
+*.p12
+*.jks
+*.keystore
+*.pem
+*.key
+*-password*
+local.properties
+
+# Build output and caches. The image builds from source; sending host artifacts would both bloat
+# the context and risk baking a locally-built (possibly dev-stamped) jar into the image.
+#
+# Scoped to the root and to module directories on purpose. A bare `**/build/` also matches the
+# Java package com/e2eechat/core/build, which silently strips BuildInfo from the context and breaks
+# the compile with a confusing "package does not exist".
+build/
+*/build/
+.gradle/
+*/.gradle/
+
+# The commit is passed with --build-arg GIT_COMMIT rather than by shipping the whole history.
+.git/
+.github/
+
+# Not needed to compile a server.
+chat-desktop/
+chat-mobile/
+
+# Editor and OS noise.
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docs and scratch.
+docs/
+*.md
+!README.md
+scripts/

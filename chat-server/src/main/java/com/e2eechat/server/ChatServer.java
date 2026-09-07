@@ -60,6 +60,9 @@ public class ChatServer {
     }
 
     private ServerSocket createSSLServerSocket() throws Exception {
+        // A packaged relay must not fall back to the development keypair; see ServerConfig.
+        config.verifyTlsConfiguration();
+
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         try (InputStream ksIs = getClass().getClassLoader().getResourceAsStream(config.getKeystorePath())) {
             if (ksIs == null) {

@@ -68,28 +68,80 @@ Keep `relay.p12` off the internet and out of the repository. It holds the relay'
 
 ---
 
-## 3. Configure the relay
+## 3. Deploy the relay
 
-`ServerConfig` reads, in order: environment variable, system property, then `server.properties`.
+The relay reads its configuration from, in order: environment variable, system property, then
+`server.properties` in the working directory.
 
 | Setting | Env | Property |
 |---|---|---|
 | Listen port | `PORT` | `server.port` |
 | Keystore path | `KEYSTORE_PATH` | `server.keystore_path` |
 | Keystore password | `KEYSTORE_PASSWORD` | `server.keystore_password` |
+| Keystore password file | `KEYSTORE_PASSWORD_FILE` | `server.keystore_password_file` |
+| Max connections | `MAX_CONNECTIONS` | `server.max_connections` |
+| Max connections per IP | `MAX_CONNECTIONS_PER_IP` | `server.max_connections_per_ip` |
+
+**Prefer `KEYSTORE_PASSWORD_FILE`.** This password protects the relay's private key, and anything in
+the environment is visible to `docker inspect` and inherited by every child process. The file form
+is what Docker and Kubernetes secrets mount, and the value is trimmed, so a trailing newline from
+shell redirection does no harm.
+
+Like the client, **a packaged relay refuses to start with no keystore configured** rather than
+falling back to the development keypair. The three artifacts below are all built with
+`-PreleaseBuild`, which is what stamps `channel=release` and turns that refusal on.
+
+### Option A - a single JAR
 
 ```bash
-export KEYSTORE_PATH=/etc/tetherless/relay.p12
-export KEYSTORE_PASSWORD='...'
-export PORT=8080
-./gradlew :chat-server:run
+./gradlew :chat-server:fatJar -PreleaseBuild
 ```
 
-The keystore password is a real secret here — unlike the client side, this file contains the private
-key. Put it in the environment or a secrets manager, not in `server.properties` next to the file it
-protects.
+Produces `chat-server/build/libs/tetherless-relay-<version>.jar`, bundling every dependency. The
+development keystore is deliberately excluded from it.
 
----
+```bash
+KEYSTORE_PATH=/etc/tetherless/relay.p12 \
+KEYSTORE_PASSWORD_FILE=/etc/tetherless/keystore-password \
+PORT=8080 \
+java -jar tetherless-relay-1.0.0.jar
+```
+
+### Option B - Docker
+
+```bash
+docker build -f chat-server/Dockerfile -t tetherless-relay:1.0.0 \
+  --build-arg GIT_COMMIT="$(git rev-parse --short HEAD)" \
+  --build-arg GIT_COMMIT_DATE="$(git log -1 --format=%cd --date=iso-strict)" .
+```
+
+**The image contains no certificate.** An image with a private key baked in is a private key
+published to everyone who can pull it, so the keystore is mounted at run time. With compose:
+
+```bash
+export TETHERLESS_KEYSTORE=/etc/tetherless/relay.p12
+export TETHERLESS_KEYSTORE_PASSWORD_FILE=/etc/tetherless/keystore-password
+docker compose -f chat-server/docker-compose.yml up -d
+```
+
+The compose file runs the relay unprivileged with a read-only root filesystem and every capability
+dropped, passes the password as a mounted secret rather than an environment variable, and binds the
+metrics port to loopback only. Logs go to stdout, where the runtime collects them.
+
+### Option C - systemd on bare metal
+
+`chat-server/deploy/tetherless-relay.service` carries its own installation steps in a header
+comment. It runs as a dedicated unprivileged user under `ProtectSystem=strict` with a syscall
+filter and an empty capability bounding set.
+
+If you move the relay to port 443, do **not** grant it `CAP_NET_BIND_SERVICE`. Put a reverse proxy
+in front, or use socket activation, so the JVM never runs privileged.
+
+### The metrics endpoint
+
+The relay exposes Prometheus-style counters on **`PORT + 1`** at `/metrics`. It is unauthenticated
+plaintext HTTP and must not be reachable from the internet. The compose file binds it to loopback;
+a systemd or bare-metal deployment needs a firewall rule.
 
 ## 4. Give clients the certificate to pin
 
@@ -156,9 +208,10 @@ jpackage cannot cross-compile, so each installer must be built on its own platfo
 ## 6. Before you hand it to anyone
 
 - [ ] `./gradlew clean build` passes — Checkstyle, SpotBugs with find-sec-bugs, and all tests.
-- [ ] The relay is running with your own keystore, not `dev-keystore.p12`.
-- [ ] The packaged client connects with the truststore configured, and **fails** without it. If it
-      connects with nothing configured, the artifact was not built with `-PreleaseBuild`.
+- [ ] The relay starts with **your** keystore, and **refuses** to start without one. If it starts
+      with nothing configured, the artifact was not built with `-PreleaseBuild`.
+- [ ] The relay's metrics port (`PORT + 1`) is not reachable from outside the host.
+- [ ] The packaged client connects with the truststore configured, and **fails** without it.
 - [ ] **Menu → About Tetherless** reports the version, the commit, `release`, and names your
       certificate.
 - [ ] Two clients on different machines complete a handshake and exchange messages.
@@ -171,12 +224,15 @@ jpackage cannot cross-compile, so each installer must be built on its own platfo
 Honesty about the edges, since this document is otherwise a set of instructions that imply
 readiness:
 
-- **The relay has no packaging story yet.** It runs from Gradle. REL-02 calls for a fat JAR, a
-  Dockerfile and a systemd unit; none exist.
+- **No code signing.** Windows will show an unknown-publisher warning on the client installer, and
+  macOS Gatekeeper will refuse the app outright without notarisation.
+- **Only the Windows client package is verified.** The macOS and Linux jpackage configuration is
+  written but has never been executed; jpackage cannot cross-compile.
 - **No auto-update.** Shipping a fix means shipping a new installer and telling people.
-- **No code signing.** Windows will show an unknown-publisher warning, and macOS Gatekeeper will
-  refuse the app outright without notarisation.
-- **Only the Windows package is verified.** The macOS and Linux jpackage configuration is written
-  but has never been executed.
-- **One relay.** It cannot read messages, but it can deny service to everybody, and it observes all
-  metadata. See the limitations in [security.md](security.md).
+- **The mobile release build is untouched.** No R8 keep rules for the reflectively-used Room and
+  crypto classes, and no signed AAB. R8-only breakage is invisible until you build release.
+- **No CI.** Nothing builds or tests this on a machine other than a developer's own, so
+  "works here" is the only evidence any of it works. BUILD-04.
+- **The relay is a single point of failure.** It cannot read messages, but it can deny service to
+  everybody, and it observes all metadata. See the limitations in [security.md](security.md).
+- **No rate limit on connection attempts per identity**, only per IP. See SERVER-03.

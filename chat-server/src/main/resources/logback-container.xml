@@ -1,0 +1,20 @@
+<configuration>
+    <!--
+      Logging for the container image, selected by -Dlogback.configurationFile in the Dockerfile.
+
+      Console only, for two reasons. A container's logs belong on stdout where the runtime collects
+      them - a rolling file inside a container is written to a layer nobody reads and lost when the
+      container is replaced. And the relay runs unprivileged against a read-only root filesystem, so
+      the default file appender cannot create its directory at all and logs a pair of errors about
+      it on every start.
+    -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX, UTC} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="${LOG_LEVEL:-info}">
+        <appender-ref ref="STDOUT" />
+    </root>
+</configuration>

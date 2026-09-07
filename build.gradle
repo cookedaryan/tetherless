@@ -15,7 +15,8 @@ ext {
 
     // Stamped from the commit rather than the wall clock, so the same commit always produces the
     // same properties file.
-    gitCommit = {
+    // A build with no .git (a Docker context, a source tarball) can supply these directly.
+    gitCommit = project.findProperty('gitCommit') ?: {
         try {
             def p = ['git', 'rev-parse', '--short', 'HEAD'].execute(null, rootDir)
             p.waitForOrKill(5000)
@@ -24,7 +25,7 @@ ext {
             return 'unknown'
         }
     }()
-    gitCommitDate = {
+    gitCommitDate = project.findProperty('gitCommitDate') ?: {
         try {
             def p = ['git', 'log', '-1', '--format=%cd', '--date=iso-strict'].execute(null, rootDir)
             p.waitForOrKill(5000)
@@ -73,6 +74,14 @@ subprojects { project ->
             // `Confidence.HIGH` here as a nested class rather than the constant.
             reportLevel = com.github.spotbugs.snom.Confidence.valueOf('HIGH')
             excludeFilter = rootProject.file('config/spotbugs/exclude.xml')
+        }
+        // Without an explicit report, a failing analysis gives nothing but an exit code, which
+        // makes the finding almost impossible to act on.
+        project.tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
+            reports {
+                xml.required = true
+                html.required = true
+            }
         }
         project.dependencies {
             spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0'

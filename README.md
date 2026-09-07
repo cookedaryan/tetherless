@@ -99,6 +99,25 @@ will not connect until you configure a real one.
 **[docs/deployment.md](docs/deployment.md)** walks through generating a certificate, configuring the
 relay and clients, and what is still missing before this is genuinely shippable.
 
+
+## Deploying the relay
+
+```bash
+# A single runnable JAR with every dependency
+./gradlew :chat-server:fatJar -PreleaseBuild
+
+# Or a container
+docker build -f chat-server/Dockerfile -t tetherless-relay:1.0.0 \
+  --build-arg GIT_COMMIT="$(git rev-parse --short HEAD)" .
+```
+
+There is also `chat-server/docker-compose.yml` (unprivileged, read-only root filesystem, keystore
+and password mounted as secrets) and a hardened systemd unit in `chat-server/deploy/`.
+
+A packaged relay **refuses to start without a keystore** rather than serving the development one,
+which is why `-PreleaseBuild` is required. The development keystore is excluded from both the fat
+JAR and the image — it holds a private key that anyone with this repository can regenerate.
+
 ## Verifying a contact
 
 Signatures only prove a key is consistent, not that it belongs to the right person. Open the shield

@@ -6,7 +6,35 @@ pluginManagement {
     }
 }
 rootProject.name = 'e2ee-chat'
+
+// Required everywhere.
 include 'core-shared'
 include 'chat-server'
-include 'chat-desktop'
-include 'chat-mobile'
+
+// Optional modules. A build context that carries only what it needs - the relay's Docker image,
+// for instance - has no reason to fail because a module it will never build is absent, and
+// chat-mobile additionally needs an Android SDK that a server image has no business installing.
+def optional = [
+        'chat-desktop': { true },
+        'chat-mobile' : {
+            System.getenv('ANDROID_HOME') || System.getenv('ANDROID_SDK_ROOT') ||
+                    file('local.properties').exists() || settings.hasProperty('includeMobile')
+        },
+]
+
+def skipped = []
+optional.each { name, wanted ->
+    if (!file("${name}/build.gradle").exists()) {
+        skipped << "${name} (not in this build context)"
+    } else if (!wanted()) {
+        skipped << "${name} (no Android SDK; set ANDROID_HOME or pass -PincludeMobile)"
+    } else {
+        include name
+    }
+}
+
+if (!skipped.isEmpty()) {
+    gradle.rootProject {
+        logger.lifecycle("Skipping modules: ${skipped.join(', ')}")
+    }
+}

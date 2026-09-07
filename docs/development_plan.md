@@ -890,30 +890,36 @@ signature failures fails both the signature-stripping and the DH-substitution MI
 
 ---
 
-### REL-02 — Packaging and distribution — **DESKTOP DONE**
+### REL-02 — Packaging and distribution — **DESKTOP AND RELAY DONE**
 
-The desktop client packages with jpackage into a self-contained application that bundles its own
-runtime. Verified end to end on Windows: the app image builds, launches, and carries the release
-stamp.
+Both the desktop client and the relay package into artifacts a user or an operator can actually run,
+and both refuse to fall back to the development certificate.
 
-**The part that mattered was not the packaging.** Bundling revealed that a shipped client would have
-gone on trusting the development certificate — whose private key is reproducible from a script in
-this repository, making the TLS pinning decorative. Packaging and trust are therefore tied together
-by one flag: `-PreleaseBuild` writes `channel=release` into `build-info.properties`, `TlsSupport`
-refuses the dev-certificate fallback when it reads that stamp, and the packaging tasks refuse to run
-without the flag. Verified against the built artifact, not only in a unit test: the packaged app
-refuses with no truststore, loads a configured one, and fails hard on a bad path.
+**The packaging was the easy half.** Bundling exposed the same class of flaw on each side. A shipped
+client would have gone on pinning the development certificate; a shipped relay would have gone on
+*serving* it — `dev-keystore.p12` was the default keystore path **and** was packaged into the server
+jar, so an operator who simply started it would have had a relay whose private key is reproducible
+by anyone with this repository, with nothing on screen to say so.
 
-**Remaining:** the relay still has no fat JAR, Dockerfile or systemd unit, and the mobile release
-build (R8 keep rules, signed AAB) is untouched. Neither macOS nor Linux packaging has been executed
-— jpackage cannot cross-compile, so each needs its own machine. No code signing, so Windows shows an
-unknown-publisher warning and macOS Gatekeeper will refuse the app outright.
+One flag now governs both. `-PreleaseBuild` stamps `channel=release`; `TlsSupport` refuses the
+dev-certificate fallback on the client, `ServerConfig.verifyTlsConfiguration()` refuses it on the
+relay, and every packaging task refuses to run without the flag. The development keystore is
+excluded from the relay's fat JAR and from its Docker image.
+
+Verified against the built artifacts rather than only in unit tests: the packaged client and the
+containerised relay each refuse with nothing configured, work with configuration, and fail hard on a
+bad path — and a client completed a pinned TLS 1.3 handshake into the relay running in Docker under
+a read-only root filesystem with all capabilities dropped.
+
+**Remaining:** the mobile release build (R8 keep rules, signed AAB) is untouched; neither macOS nor
+Linux client packaging has been executed, since jpackage cannot cross-compile; and nothing is code
+signed, so Windows shows an unknown-publisher warning and macOS Gatekeeper will refuse the client.
 
 **Priority:** P2 · **Depends on:** `REL-01` · **Estimate:** 1.5 days
 
 **Action items:**
 1. ~~Desktop: `jlink`/`jpackage` producing a self-contained installer per platform, so users need no JDK.~~ Done for Windows; `packageAppImage` and `packageInstaller` in `chat-desktop/build.gradle`.
-2. Server: a fat JAR plus a Dockerfile plus a `docker-compose.yml` including TLS cert mounting; a systemd unit for bare-metal.
+2. ~~Server: a fat JAR plus a Dockerfile plus a `docker-compose.yml` including TLS cert mounting; a systemd unit for bare-metal.~~ Done: `fatJar`, `chat-server/Dockerfile`, `chat-server/docker-compose.yml`, `chat-server/deploy/tetherless-relay.service`. The container runs unprivileged, read-only, with all capabilities dropped, takes the keystore password as a mounted secret rather than an environment variable, and keeps the unauthenticated metrics port on loopback.
 3. Mobile: a signed release APK/AAB with R8 enabled and **keep rules for the `core-shared` model classes** — obfuscation renaming a class used reflectively by Room, or shrinking a crypto provider entry, is a classic release-only breakage.
 4. Verify the release build end-to-end, not just the debug build. R8-only bugs are invisible in CI unless CI builds release.
 5. ~~Reproducible version stamping from git describe, surfaced in an About dialog for bug reports.~~ Done: `BuildInfo` reads a stamp generated from the commit rather than the wall clock, so a given commit always produces the same file; **Menu → About Tetherless** shows version, commit, channel, and which certificate is pinned.

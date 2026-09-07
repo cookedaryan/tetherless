@@ -220,13 +220,19 @@ insecurely. Anything unrecognised or missing in the stamp reads as `dev`, so a c
 cannot promote an artifact into being treated as packaged. The packaging tasks themselves refuse to
 run without `-PreleaseBuild`, which is what writes the release stamp.
 
+The relay is held to the same rule. `dev-keystore.p12` was its default keystore path and was
+packaged into its jar, so an unconfigured relay would have *served* that key. A packaged relay now
+refuses to start unless a keystore is configured, and the development one is excluded from both the
+fat JAR and the Docker image.
+
 A deployment supplies its own certificate through `truststore` in `config.properties`, the
 `tetherless.truststore` system property, or `TETHERLESS_TRUSTSTORE`. A configured-but-unreadable
 truststore is a hard failure, never a silent fallback. See [deployment.md](deployment.md).
 
-Tested: `TlsSupportTest` loads a second copy of the classes through an isolated class loader with a
-fabricated release stamp and asserts the refusal, because that branch cannot otherwise be reached
-from a test running in a development build.
+Tested: `TlsSupportTest` and `ServerConfigTest` each load a second copy of the classes through an
+isolated class loader with a fabricated release stamp and assert the refusal, because that branch
+cannot otherwise be reached from a test running in a development build. Both were checked by
+removing the guard and confirming that exactly the corresponding test fails.
 
 The truststore password defaults to the well-known `changeit`. That is acceptable: it protects a
 file of public certificates, guarding integrity rather than confidentiality. The relay's *keystore*
@@ -289,6 +295,11 @@ successes is not informative:
 - **The desktop at-rest key was derived with HKDF**, which has no work factor and let an attacker
   holding the database guess passphrases at hash speed. Now PBKDF2-HMAC-SHA256 at 210,000
   iterations, with existing databases re-encrypted in place on first launch.
+- **The relay's private key shipped inside its own jar**, and `dev-keystore.p12` was also the
+  default keystore path - so an operator who simply started the server would have served TLS with a
+  keypair anyone can regenerate. Found while packaging it, by looking in the jar rather than
+  assuming. The relay now refuses to start in a release build unless a keystore is configured, and
+  the development one is excluded from both the fat JAR and the Docker image.
 - **A packaged client would have trusted the development certificate**, whose private key anyone can
   regenerate from a script in this repository - TLS in name only. Release builds now refuse to
   connect unless a truststore is configured, verified against the actual packaged artifact rather

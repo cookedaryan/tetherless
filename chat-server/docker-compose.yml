@@ -1,0 +1,70 @@
+# Runs the relay with its certificate and password supplied at run time.
+#
+# From the repository root:
+#
+#   export TETHERLESS_KEYSTORE=/etc/tetherless/relay.p12
+#   echo -n 'the-keystore-password' > ./keystore-password.txt
+#   docker compose -f chat-server/docker-compose.yml up --build
+#
+# Neither the certificate nor the password is in the image. See docs/deployment.md for generating
+# the keystore.
+
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: chat-server/Dockerfile
+      args:
+        # Stamped into build-info.properties so a running relay can be traced to a commit.
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_COMMIT_DATE: ${GIT_COMMIT_DATE:-unknown}
+    image: tetherless-relay:${RELAY_VERSION:-1.0.0}
+    restart: unless-stopped
+
+    ports:
+      # The relay's TLS port, the only one that should be reachable from outside.
+      - "${RELAY_PORT:-8080}:8080"
+      # Metrics: unauthenticated plaintext HTTP, so bound to loopback only. Point Prometheus at it
+      # through an SSH tunnel or a sidecar, never at the open internet.
+      - "127.0.0.1:${METRICS_PORT:-8081}:8081"
+
+    environment:
+      PORT: 8080
+      KEYSTORE_PATH: /run/secrets/relay_keystore
+      # Read from a file rather than an environment variable: anything in the environment is
+      # visible to `docker inspect` and inherited by child processes, and this password protects
+      # the relay's private key.
+      KEYSTORE_PASSWORD_FILE: /run/secrets/relay_keystore_password
+      MAX_CONNECTIONS: ${MAX_CONNECTIONS:-500}
+      MAX_CONNECTIONS_PER_IP: ${MAX_CONNECTIONS_PER_IP:-10}
+
+    secrets:
+      - relay_keystore
+      - relay_keystore_password
+
+    # The relay writes nothing to disk. A read-only root filesystem turns a remote-code-execution
+    # bug into a much smaller problem.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+secrets:
+  relay_keystore:
+    file: ${TETHERLESS_KEYSTORE:-./relay.p12}
+  relay_keystore_password:
+    file: ${TETHERLESS_KEYSTORE_PASSWORD_FILE:-./keystore-password.txt}

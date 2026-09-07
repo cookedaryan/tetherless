@@ -20,3 +20,69 @@ dependencies {
     testImplementation libs.mockito.core
 }
 
+
+// ------------------------------------------------------------------ packaging
+//
+// A single runnable JAR is what the Dockerfile and the systemd unit both consume.
+//
+// Two things are deliberate here. The development keystore is excluded: it lives in this module's
+// resources so `run` and the tests can find it, and it contains a private key that anyone can
+// regenerate from scripts/generate-dev-cert.sh. Shipping it inside the deployment artifact would
+// hand every operator a relay identity that is trivially impersonated. And the task refuses to run
+// without -PreleaseBuild, which is what stamps channel=release and makes ServerConfig reject the
+// development keystore instead of quietly serving it.
+
+def relayMainClass = 'com.e2eechat.server.Main'
+
+tasks.register('fatJar', Jar) {
+    group = 'distribution'
+    description = 'Builds a single runnable relay JAR with all dependencies included.'
+
+    archiveBaseName = 'tetherless-relay'
+    archiveClassifier = ''
+    archiveVersion = rootProject.ext.appVersion
+
+    manifest {
+        attributes(
+                'Main-Class': relayMainClass,
+                'Implementation-Title': 'Tetherless Relay',
+                'Implementation-Version': rootProject.ext.appVersion,
+                'Implementation-Commit': rootProject.ext.gitCommit)
+    }
+
+    // Resolving the classpath inside a closure defers it, which also hides the task dependency
+    // on building those jars; without this the task fails on a clean tree.
+    dependsOn configurations.runtimeClasspath
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.main.output
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+
+    // Signature files from a signed dependency do not survive repackaging: the JVM refuses the jar
+    // with a SecurityException about a mismatched digest.
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/*.EC'
+    // Several dependencies each carry one, and a fat JAR is by definition not a module.
+    exclude 'module-info.class', 'META-INF/versions/*/module-info.class'
+    // Never ship the development private key.
+    exclude 'dev-keystore.p12'
+
+    doFirst {
+        if (!rootProject.ext.isReleaseBuild) {
+            throw new GradleException(
+                    'Packaging requires -PreleaseBuild. Without it the artifact is stamped '
+                            + 'channel=dev, and ServerConfig would let the relay serve the '
+                            + 'development keystore. Run: ./gradlew :chat-server:fatJar '
+                            + '-PreleaseBuild')
+        }
+    }
+}
+
+// The ordinary jar keeps the dev keystore so `run` and the tests work from a checkout, but a
+// release build has no business carrying it either.
+tasks.named('jar') {
+    if (rootProject.ext.isReleaseBuild) {
+        exclude 'dev-keystore.p12'
+    }
+}

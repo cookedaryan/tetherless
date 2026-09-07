@@ -1,0 +1,80 @@
+# systemd unit for the relay on bare metal.
+#
+# Install:
+#   sudo useradd --system --home /var/lib/tetherless --shell /usr/sbin/nologin tetherless
+#   sudo mkdir -p /opt/tetherless /etc/tetherless
+#   sudo cp tetherless-relay-*.jar /opt/tetherless/relay.jar
+#   sudo cp relay.p12 /etc/tetherless/
+#   sudo install -m 0600 -o tetherless -g tetherless /dev/null /etc/tetherless/keystore-password
+#   sudo sh -c 'printf "%s" "the-password" > /etc/tetherless/keystore-password'
+#   sudo chown -R root:tetherless /etc/tetherless && sudo chmod 0750 /etc/tetherless
+#   sudo cp tetherless-relay.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now tetherless-relay
+#
+# Logs: journalctl -u tetherless-relay -f
+
+[Unit]
+Description=Tetherless relay
+Documentation=https://github.com/cookedaryan/tetherless/blob/main/docs/deployment.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tetherless
+Group=tetherless
+
+Environment=PORT=8080
+Environment=KEYSTORE_PATH=/etc/tetherless/relay.p12
+# A file, not an environment variable: the environment of a process is readable by anyone who can
+# see /proc for it, and this password protects the relay's private key.
+Environment=KEYSTORE_PASSWORD_FILE=/etc/tetherless/keystore-password
+Environment=JAVA_OPTS=-XX:MaxRAMPercentage=75
+
+WorkingDirectory=/var/lib/tetherless
+ExecStart=/bin/sh -c 'exec /usr/bin/java $JAVA_OPTS -jar /opt/tetherless/relay.jar'
+
+Restart=on-failure
+RestartSec=5s
+
+# The JVM handles SIGTERM; give connections a moment to drain before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# --- Hardening ---------------------------------------------------------------
+# The relay reads a keystore and opens a socket. It has no reason to do anything else, so take
+# everything else away: a compromise then buys far less than a shell would.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+RemoveIPC=true
+
+# The only writable path it needs.
+ReadWritePaths=/var/lib/tetherless
+
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+
+# Binding 8080 needs no privilege. If you move the relay to 443, do not add CAP_NET_BIND_SERVICE
+# here - put a reverse proxy in front, or use socket activation, so the JVM never runs privileged.
+
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
