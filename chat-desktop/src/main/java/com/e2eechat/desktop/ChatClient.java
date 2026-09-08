@@ -73,17 +73,15 @@ public class ChatClient implements MessageListener {
 
         this.secureChat = new SecureChat(
                 clientId, identityKey, sessionManager, keyStoreManager,
-                this::transmit,
+                message -> transmit(message),
                 peerDirectory::setName,
                 localDisplayName);
     }
 
-    /** Hands a signed frame to the relay, if we are connected. */
-    private void transmit(Message message) {
+    /** Hands a signed frame to the relay. False when there was no connection to take it. */
+    private boolean transmit(Message message) {
         ConnectionManager connection = connectionManager;
-        if (connection != null) {
-            connection.sendMessage(message);
-        }
+        return connection != null && connection.sendMessage(message);
     }
 
     // ----------------------------------------------------------------- wiring
@@ -363,9 +361,10 @@ public class ChatClient implements MessageListener {
             // machine - and the window, seeing no id come back, drew no bubble to contradict it.
             Message encrypted = secureChat.encrypt(peerId, messageId, body);
 
+            boolean accepted = transmit(encrypted);
             messageRepository.saveMessage(messageId, clientId, peerId, text, timestamp,
-                    ChatMessage.Status.SENT, replyId, replySender, replyPreview, true);
-            transmit(encrypted);
+                    accepted ? ChatMessage.Status.SENT : ChatMessage.Status.FAILED,
+                    replyId, replySender, replyPreview, true);
             return messageId;
         } catch (SessionRenewalRequiredException e) {
             // Not a failure. The key reached its send budget and a fresh handshake is already on

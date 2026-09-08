@@ -64,6 +64,9 @@ public class ChatClientTest {
     /** Text of every message Alice's repository was asked to store. */
     private final List<String> aliceSaved = new ArrayList<>();
 
+    /** Status of every message Alice's repository was asked to store, in order. */
+    private final List<String> savedStatuses = new ArrayList<>();
+
     private String aliceId;
     private String bobId;
 
@@ -90,7 +93,8 @@ public class ChatClientTest {
 
         aliceClient = new ChatClient(aliceId, aliceKeys,
                 new SessionManager(aliceId, aliceLookup),
-                recordingRepository(dbKey, aliceSaved), keyStore(aliceKeys, bobKeys.getPublic()),
+                recordingRepository(dbKey, aliceSaved, savedStatuses),
+                keyStore(aliceKeys, bobKeys.getPublic()),
                 new PeerDirectory(aliceDir), "Alice");
         bobClient = new ChatClient(bobId, bobKeys,
                 new SessionManager(bobId, bobLookup),
@@ -115,7 +119,8 @@ public class ChatClientTest {
     }
 
     /** Records what was stored, so a test can tell a message that went from one that did not. */
-    private static MessageRepository recordingRepository(SecretKey dbKey, List<String> saved) {
+    private static MessageRepository recordingRepository(SecretKey dbKey, List<String> saved,
+                                                          List<String> statuses) {
         return new MessageRepository(":memory:", dbKey) {
             @Override
             public void saveMessage(String sender, String receiver, String content, long timestamp) {
@@ -127,6 +132,7 @@ public class ChatClientTest {
                                     long timestamp, ChatMessage.Status status, String replyToId,
                                     String replyToSender, String replyToPreview, boolean markRead) {
                 saved.add(content);
+                statuses.add(status.name());
             }
         };
     }
@@ -173,9 +179,10 @@ public class ChatClientTest {
         ConnectionManager transport =
                 new ConnectionManager("localhost", 0, "unused", client) {
                     @Override
-                    public void sendMessage(Message message) {
+                    public boolean sendMessage(Message message) {
                         wire.add(message);
                         peer.onMessageReceived(message);
+                        return true;
                     }
 
                     @Override
@@ -368,6 +375,55 @@ public class ChatClientTest {
         assertEquals("this one goes", aliceSaved.get(0));
     }
 
+    /**
+     * A send the transport refuses is recorded as failed, so the bubble can say so.
+     *
+     * <p>MessageBubble has always drawn a red tick for FAILED and nothing ever set it: a message
+     * that never left the machine looked exactly like one that did.
+     */
+    @Test
+    public void aSendTheTransportRefusesIsRecordedAsFailed() throws Exception {
+        aliceClient.startSecureChat(bobId);
+        refuseAliceTransport();
+        aliceSaved.clear();
+        savedStatuses.clear();
+
+        String messageId = aliceClient.sendMessage("this one does not leave", null);
+
+        assertNotNull("the message should still get an id and a bubble", messageId);
+        assertEquals(1, savedStatuses.size());
+        assertEquals("FAILED", savedStatuses.get(0));
+    }
+
+    @Test
+    public void aSendTheTransportAcceptsIsRecordedAsSent() {
+        aliceClient.startSecureChat(bobId);
+        savedStatuses.clear();
+
+        assertNotNull(aliceClient.sendMessage("this one leaves", null));
+
+        assertEquals(1, savedStatuses.size());
+        assertEquals("SENT", savedStatuses.get(0));
+    }
+
+    /** Swaps Alice's transport for one that refuses everything, as a closed connection would. */
+    private void refuseAliceTransport() throws Exception {
+        ConnectionManager refusing = new ConnectionManager("localhost", 0, "unused", aliceClient) {
+            @Override
+            public boolean sendMessage(Message message) {
+                return false;
+            }
+
+            @Override
+            public void start() {
+                // No socket: this fixture is the network.
+            }
+        };
+        Field field = ChatClient.class.getDeclaredField("connectionManager");
+        field.setAccessible(true);
+        field.set(aliceClient, refusing);
+    }
+
     @Test
     public void aFrameAlteredInFlightIsDroppedRatherThanRendered() throws Exception {
         aliceClient.startSecureChat(bobId);
@@ -379,10 +435,10 @@ public class ChatClientTest {
         field.setAccessible(true);
         field.set(aliceClient, new ConnectionManager("localhost", 0, "unused", aliceClient) {
             @Override
-            public void sendMessage(Message message) {
+            public boolean sendMessage(Message message) {
                 if (message.getType() != MessageType.TEXT_MESSAGE) {
                     bobClient.onMessageReceived(message);
-                    return;
+                    return true;
                 }
                 byte[] payload = message.getPayload();
                 payload[0] ^= 0x01;
@@ -396,6 +452,7 @@ public class ChatClientTest {
                         .setTimestamp(message.getTimestamp())
                         .setSignature(message.getSignature())
                         .buildUnsigned());
+                return true;
             }
 
             @Override

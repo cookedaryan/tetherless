@@ -316,12 +316,19 @@ public class ConnectionManager {
         }
     }
 
-    public void sendMessage(Message msg) {
+    /**
+     * Queues a frame for the relay.
+     *
+     * @return true when it was queued, false when there is no connection to put it on. The caller
+     *         needs to know: a message that was dropped here and reported as sent is the
+     *         difference between a red tick and a lie.
+     */
+    public boolean sendMessage(Message msg) {
         if (state == ConnectionState.CONNECTED) {
-            outboundQueue.offer(msg);
-        } else {
-            logger.warn("Cannot send message, state is {}", state);
+            return outboundQueue.offer(msg);
         }
+        logger.warn("Cannot send message, state is {}", state);
+        return false;
     }
 
     public void stop() {
