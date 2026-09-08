@@ -175,6 +175,24 @@ every message. Message sizes are not padded, so lengths leak. Typing notificatio
 are signed but not encrypted — they carry no content, but they do tell the relay you are active. If
 the relay operator is the adversary you care about, **the social graph is not protected**.
 
+### The client asks GitHub about updates when it starts
+
+The desktop client makes one HTTPS request to the GitHub releases API at startup and shows a banner
+if a newer version exists. The request carries no identifier of its own, but it necessarily tells
+GitHub — and anyone watching the network, through the destination address and the TLS server name —
+that this address runs Tetherless and roughly when it was started. Against an adversary who watches
+network traffic rather than the relay, that is a signal the rest of the design works to avoid, so
+it is stated here rather than left to be discovered.
+
+It is off with `updates=false` in `config.properties`, or `-Dtetherless.updates=false`, and turning
+it off costs nothing but the notice. Nothing is ever downloaded or installed: the client is not code
+signed, and an updater that fetched and ran a binary would be asking users to trust a download they
+have no way to verify.
+
+Tested: `UpdateCheckerTest`, including that a disabled check never reaches the network, that an
+unstamped build never asks at all, and that every failure — no network, a bad gateway page, an
+unparseable version — ends in silence rather than anything the user has to deal with.
+
 ### At-rest encryption on mobile is device-bound
 
 The Android database is SQLCipher-encrypted as a whole file, so unlike desktop's column-level

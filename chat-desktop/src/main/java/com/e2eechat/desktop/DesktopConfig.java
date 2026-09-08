@@ -34,16 +34,26 @@ public final class DesktopConfig {
     /** Key in {@code config.properties} for that truststore's password. */
     static final String TRUSTSTORE_PASSWORD_KEY = "truststore.password";
 
+    /** Key in {@code config.properties} switching the startup update check off. */
+    static final String UPDATES_KEY = "updates";
+
     private final String host;
     private final int port;
     private final String trustStorePath;
     private final String trustStorePassword;
+    private final boolean updateChecks;
 
     DesktopConfig(String host, int port, String trustStorePath, String trustStorePassword) {
+        this(host, port, trustStorePath, trustStorePassword, true);
+    }
+
+    DesktopConfig(String host, int port, String trustStorePath, String trustStorePassword,
+                  boolean updateChecks) {
         this.host = host;
         this.port = port;
         this.trustStorePath = trustStorePath;
         this.trustStorePassword = trustStorePassword;
+        this.updateChecks = updateChecks;
     }
 
     public String host() {
@@ -57,6 +67,17 @@ public final class DesktopConfig {
     /** The configured truststore path, or {@code null} when none was set. */
     public String trustStorePath() {
         return trustStorePath;
+    }
+
+    /**
+     * Whether the client may ask GitHub about newer releases at startup.
+     *
+     * <p>On by default, and worth being able to turn off: the request tells GitHub, and anyone
+     * watching the network, that this address runs Tetherless and when it started. See
+     * {@link UpdateChecker}.
+     */
+    public boolean updateChecks() {
+        return updateChecks;
     }
 
     /**
@@ -95,7 +116,12 @@ public final class DesktopConfig {
                 file.getProperty(TRUSTSTORE_PASSWORD_KEY),
                 null);
 
-        return new DesktopConfig(host, port, trustStore, trustStorePassword);
+        boolean updates = !"false".equalsIgnoreCase(firstNonEmpty(
+                System.getProperty(UpdateChecker.ENABLED_PROPERTY),
+                file.getProperty(UPDATES_KEY),
+                "true"));
+
+        return new DesktopConfig(host, port, trustStore, trustStorePassword, updates);
     }
 
     /**
@@ -112,6 +138,10 @@ public final class DesktopConfig {
         }
         if (trustStorePassword != null) {
             System.setProperty(TlsSupport.PASSWORD_PROPERTY, trustStorePassword);
+        }
+        if (!updateChecks) {
+            System.setProperty(UpdateChecker.ENABLED_PROPERTY, "false");
+            LOG.info("Update checks are switched off for this profile");
         }
     }
 

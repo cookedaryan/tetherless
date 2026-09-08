@@ -11,6 +11,7 @@ import com.e2eechat.desktop.ui.IconButton;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
 import com.e2eechat.desktop.ui.TranscriptPanel;
+import com.e2eechat.desktop.ui.UpdateBanner;
 import com.e2eechat.desktop.ui.WelcomePane;
 
 import javax.swing.BorderFactory;
@@ -54,6 +55,8 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
     private final JPanel rightPanel;
     private final Composer composer;
 
+    private final UpdateBanner updateBanner = new UpdateBanner();
+
     private TranscriptPanel transcript;
     private JComponent emptyState;
     private final Timer typingExpiry;
@@ -88,7 +91,11 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         split.setDividerSize(0);
         split.setBorder(null);
         split.setResizeWeight(0);
-        add(split);
+
+        // The frame's own BorderLayout, so the banner spans the sidebar and the chat both. It is
+        // hidden until there is something to announce, so this costs a row of nothing.
+        add(updateBanner, BorderLayout.NORTH);
+        add(split, BorderLayout.CENTER);
 
         header.setComposerVisible(false);
 
@@ -103,6 +110,11 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         applyTheme();
 
         client.addMessageListener(this);
+
+        // Fire and forget. The check runs off the event thread and stays silent unless there is a
+        // newer release, so nothing here can delay the window appearing.
+        new UpdateChecker().checkInBackground(
+                update -> updateBanner.show(update.version(), update.url()));
     }
 
     private void applyTheme() {
