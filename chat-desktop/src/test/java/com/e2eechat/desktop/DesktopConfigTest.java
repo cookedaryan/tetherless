@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -55,6 +56,7 @@ public class DesktopConfigTest {
                 System.setProperty(TOUCHED[i], originals[i]);
             }
         }
+        DesktopConfig.clearUpdateChecksPreference();
     }
 
     // ------------------------------------------------------------ host / port
@@ -180,6 +182,38 @@ public class DesktopConfigTest {
 
         assertEquals("/explicit/relay.p12",
                 DesktopConfig.load(dir, new String[0]).trustStorePath());
+    }
+
+    // -------------------------------------------------------- update checks
+
+    /**
+     * The toggle writes to Preferences, which sits one rung above the built-in default: a
+     * deployment that sets updates=false keeps it off and the toggle cannot override it.
+     */
+    @Test
+    public void anExplicitSettingBeatsThePreference() throws Exception {
+        DesktopConfig.setUpdateChecksPreference(true);
+        System.setProperty(UpdateChecker.ENABLED_PROPERTY, "false");
+        try {
+            assertFalse(DesktopConfig.load(temp.getRoot(), new String[0]).updateChecks());
+        } finally {
+            System.clearProperty(UpdateChecker.ENABLED_PROPERTY);
+        }
+    }
+
+    @Test
+    public void thePreferenceDecidesWhenNothingElseIsConfigured() {
+        DesktopConfig.setUpdateChecksPreference(false);
+        assertFalse(DesktopConfig.load(temp.getRoot(), new String[0]).updateChecks());
+
+        DesktopConfig.setUpdateChecksPreference(true);
+        assertTrue(DesktopConfig.load(temp.getRoot(), new String[0]).updateChecks());
+    }
+
+    @Test
+    public void updateChecksAreOnWhenNothingHasEverBeenSet() {
+        DesktopConfig.clearUpdateChecksPreference();
+        assertTrue(DesktopConfig.load(temp.getRoot(), new String[0]).updateChecks());
     }
 
     private static void writeConfig(File dir, String body) throws IOException {

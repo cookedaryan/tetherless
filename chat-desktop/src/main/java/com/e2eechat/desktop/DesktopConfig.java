@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.Properties;
+import java.util.prefs.Preferences;
 
 /**
  * Resolves where the client connects and which certificate it pins.
@@ -28,6 +29,11 @@ public final class DesktopConfig {
     private static final String DEFAULT_HOST = "localhost";
     private static final int DEFAULT_PORT = 8080;
 
+    /** Where the settings toggle stores its answer. Mirrors how Theme stores dark mode. */
+    private static final Preferences PREFS = Preferences.userRoot().node("com/e2eechat/desktop");
+
+    private static final String PREF_UPDATES = "updateChecks";
+
     /** Key in {@code config.properties} for the relay's pinned certificate. */
     static final String TRUSTSTORE_KEY = "truststore";
 
@@ -36,6 +42,21 @@ public final class DesktopConfig {
 
     /** Key in {@code config.properties} switching the startup update check off. */
     static final String UPDATES_KEY = "updates";
+
+    /** Records the user's choice. Configuration set by a deployment still wins over this. */
+    public static void setUpdateChecksPreference(boolean enabled) {
+        PREFS.putBoolean(PREF_UPDATES, enabled);
+    }
+
+    /** The stored choice, defaulting to on. */
+    public static boolean updateChecksPreference() {
+        return PREFS.getBoolean(PREF_UPDATES, true);
+    }
+
+    /** Forgets the stored choice, so the built-in default applies again. Used by tests. */
+    public static void clearUpdateChecksPreference() {
+        PREFS.remove(PREF_UPDATES);
+    }
 
     private final String host;
     private final int port;
@@ -116,10 +137,13 @@ public final class DesktopConfig {
                 file.getProperty(TRUSTSTORE_PASSWORD_KEY),
                 null);
 
+        // Precedence, lowest last: arguments, system properties, config.properties, the settings
+        // toggle, then the built-in default. The toggle sits below configuration deliberately - a
+        // deployment that mandates updates=false must not be overridable from the settings sheet.
         boolean updates = !"false".equalsIgnoreCase(firstNonEmpty(
                 System.getProperty(UpdateChecker.ENABLED_PROPERTY),
                 file.getProperty(UPDATES_KEY),
-                "true"));
+                String.valueOf(updateChecksPreference())));
 
         return new DesktopConfig(host, port, trustStore, trustStorePassword, updates);
     }
