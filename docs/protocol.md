@@ -236,24 +236,30 @@ matter across a long session.
 
 ## 10. Replay and reordering
 
-Each session remembers the counters it has seen, in a set capped at 1024 entries.
+Each session tracks the highest counter it has accepted, and remembers the individual counters it
+has seen at or above the **window floor**, which sits 1024 below that highest.
 
-- A counter already in the set is a **replay** and is dropped silently.
-- Anything else is accepted, so genuine reordering still delivers.
+- A counter at or below the floor is **too old to judge** and is dropped. It cannot be told apart
+  from a replay.
+- A counter above the floor that has been seen before is a **replay** and is dropped.
+- Anything else is accepted, so genuine reordering inside the window still delivers.
 
-**The cap evicts, it does not floor.** Once 1024 further counters have been recorded, the oldest is
-forgotten, and a frame carrying it would be accepted a second time. This is not the sliding window
-with a low-water mark that the name suggests, and it is worth being precise about: replay protection
-here is bounded by how many messages have passed, not by how old the frame is.
+The floor is what makes this correct, and the set of seen counters only separates frames inside the
+window from one another. That separation matters: an earlier version had no floor at all and relied
+on a set that evicted its oldest entry, so once 1024 further messages had passed the earliest
+counter was simply forgotten and a captured frame carrying it was accepted a second time. Replay
+protection has to be bounded by how old a frame is, not by how many have arrived since.
 
-What narrows it to almost nothing in practice is the second check. A message whose timestamp is more
-than **five minutes** from local time is rejected outright, so a captured frame is only replayable
-inside a five-minute window *and* after 1024 further messages have gone by on that session. On a
-human conversation that combination does not arise. On a machine-driven one it could.
+The set is pruned once it grows past twice the window. Nothing depends on that for correctness — it
+only stops a long session accumulating every counter it has ever seen.
 
-A proper fix is to track the highest counter seen and reject anything at or below `highest - 1024`,
-which costs nothing and removes the eviction hole entirely. It has not been done; it is recorded
-here and in [security.md](security.md) rather than left for someone to discover.
+**What this costs.** A frame arriving more than 1024 messages behind is now dropped even if it is
+genuine. That is deliberate, and the second check makes it moot: a message whose timestamp is more
+than **five minutes** from local time is rejected outright, so a frame that far behind would already
+have been refused on age.
+
+Signature verification happens before any of this, so a forged frame cannot consume a counter and
+cause the genuine message carrying it to be dropped.
 
 The five-minute tolerance is also what stops ordinary clock drift breaking the app; see case 8 of
 [the QA script](qa_script.md).

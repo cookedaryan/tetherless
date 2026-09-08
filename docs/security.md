@@ -119,20 +119,21 @@ what protects message content, which is already encrypted before it reaches the 
 
 *Captured frames re-sent, or delivered out of order.*
 
-Each message carries a monotonic counter inside its nonce, remembered per session so a replay is
-rejected while genuine reordering still delivers. Timestamps more than five minutes from local time
-are rejected.
+Each message carries a monotonic counter inside its nonce. A session tracks the highest counter it
+has accepted and refuses anything at or below `highest - 1024`, remembering the individual counters
+above that floor so genuine reordering inside the window still delivers. Timestamps more than five
+minutes from local time are rejected.
 
-Tested: `replayingACapturedMessageIsRejected`, `reorderedMessagesAreStillDelivered`.
+Tested: `replayingACapturedMessageIsRejected`, `reorderedMessagesAreStillDelivered`, and
+`SessionReplayWindowTest`, which asserts from several directions that no counter is ever accepted
+twice however much traffic passes in between.
 
-**With one caveat this document previously overstated.** The set of seen counters is capped at 1024
-and *evicts the oldest*; it does not keep a low-water mark. Once 1024 further messages have passed
-on a session, the earliest counter is forgotten and a frame carrying it would be accepted again. The
-five-minute timestamp check is what keeps this from mattering in practice — a replay has to land
-inside five minutes *and* after 1024 further messages — but the protection is bounded by message
-count, not by age, and calling it a sliding window was too generous. Tracking the highest counter
-seen and rejecting anything at or below `highest - 1024` would close it, costs nothing, and has not
-been done.
+**This document previously overstated the control, and the code matched the overstatement.** The
+seen-counter set was capped at 1024 and evicted its oldest entry, with no floor: once 1024 further
+messages had passed on a session, the earliest counter was forgotten and a captured frame carrying
+it was accepted a second time. Protection was bounded by message count rather than by age, which is
+not what "sliding window" means. The floor closes it. The tests that now cover it were written
+first and watched fail against the old implementation, so they are known to catch exactly this.
 
 ### T5 — Malicious peer payload
 

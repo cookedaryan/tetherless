@@ -2,9 +2,8 @@ package com.e2eechat.core.session;
 
 import javax.crypto.SecretKey;
 import java.security.PublicKey;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 
 public class Session {
@@ -19,14 +18,27 @@ public class Session {
     private PublicKey remoteDhPublicKey;
     private long sendCounter = 0;
     
-    // We use a Map to utilize removeEldestEntry for a size-capped sliding window
-    private final Map<Long, Boolean> receivedCountersMap = new LinkedHashMap<Long, Boolean>(1024, 0.75f, false) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<Long, Boolean> eldest) {
-            return size() > 1024;
-        }
-    };
-    private final Set<Long> receivedCounters = Collections.synchronizedSet(Collections.newSetFromMap(receivedCountersMap));
+    /**
+     * How far behind the highest counter seen a frame may be and still be judged on its own.
+     *
+     * <p>Anything at or below the floor is refused outright. It cannot be told apart from a replay,
+     * and a genuine frame that far behind would already have failed the timestamp check.
+     */
+    static final int REPLAY_WINDOW = 1024;
+
+    /** Highest counter accepted so far. Counters start at 1, so zero means none yet. */
+    private long highestReceivedCounter = 0;
+
+    /**
+     * Counters accepted at or above the window floor.
+     *
+     * <p>This set is not what makes replay protection correct - the floor is. It only distinguishes
+     * frames inside the window from one another, so genuine reordering still delivers. That
+     * separation is the fix: the previous version had no floor and relied on a set that evicted its
+     * oldest entry, so a counter simply stopped being remembered once enough traffic had passed and
+     * a captured frame carrying it was accepted a second time.
+     */
+    private final Set<Long> receivedCounters = new HashSet<Long>();
 
     public Session(String peerId) {
         this.peerId = peerId;
@@ -53,7 +65,44 @@ public class Session {
         return ++sendCounter;
     }
 
-    public boolean registerReceivedCounter(long counter) {
-        return receivedCounters.add(counter); // returns false if already present (replay)
+    /**
+     * Records a received counter.
+     *
+     * @return false if the frame must be dropped: either it has been seen before, or it is too far
+     *         behind to be told apart from a replay
+     */
+    public synchronized boolean registerReceivedCounter(long counter) {
+        if (counter <= highestReceivedCounter - REPLAY_WINDOW) {
+            return false;
+        }
+        if (!receivedCounters.add(counter)) {
+            return false;
+        }
+        if (counter > highestReceivedCounter) {
+            highestReceivedCounter = counter;
+            forgetCountersBelowTheWindow();
+        }
+        return true;
+    }
+
+    /**
+     * Drops counters the floor already rejects, so a long session does not accumulate every one it
+     * has ever seen.
+     *
+     * <p>Only once the set has grown to twice the window, rather than on every message: nothing
+     * depends on it for correctness, and pruning eagerly would walk the whole set on every frame to
+     * remove a single entry.
+     */
+    private void forgetCountersBelowTheWindow() {
+        if (receivedCounters.size() <= REPLAY_WINDOW * 2) {
+            return;
+        }
+        long floor = highestReceivedCounter - REPLAY_WINDOW;
+        Iterator<Long> seen = receivedCounters.iterator();
+        while (seen.hasNext()) {
+            if (seen.next() <= floor) {
+                seen.remove();
+            }
+        }
     }
 }

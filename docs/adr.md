@@ -163,7 +163,5 @@ Recorded here so they are not mistaken for settled.
   working. A ratchet is the answer and has not been built.
 - **The relay acknowledges nothing after a client's HELLO**, so a client cannot tell when it has
   become routable. Fixing it means an acknowledgement frame and a protocol version bump.
-- **The replay set evicts rather than floors.** See §10 of [protocol.md](protocol.md). The fix is
-  small and has not been made.
 - **Desktop at-rest encryption covers message bodies only.** Participants, timestamps and message
   counts are in the clear in the local database.
