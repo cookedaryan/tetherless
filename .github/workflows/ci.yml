@@ -25,6 +25,9 @@ jobs:
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
 
+      - name: Generate the development certificate
+        run: bash scripts/generate-dev-cert.sh
+
       - name: Build with Gradle
         run: ./gradlew clean build check --stacktrace
 
@@ -64,6 +67,9 @@ jobs:
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
 
+      - name: Generate the development certificate
+        run: bash scripts/generate-dev-cert.sh
+
       - name: Build Android App
         run: ./gradlew :chat-mobile:assembleDebug :chat-mobile:testDebugUnitTest --stacktrace
 
@@ -89,6 +95,9 @@ jobs:
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
 
+      - name: Generate the development certificate
+        run: bash scripts/generate-dev-cert.sh
+
       # Nested virtualisation is not available on all runners; this enables KVM where it is.
       - name: Enable KVM
         run: |
@@ -113,10 +122,44 @@ jobs:
           path: chat-mobile/build/outputs/androidTest-results/**
           retention-days: 7
 
+  # INTEG-01. Boots the relay on an ephemeral port, runs two client cores through a full
+  # conversation, and asserts that no plaintext appears in anything the relay routed. Kept out of
+  # the `build` job because it opens real sockets and is slower than the unit suite, and given a
+  # hard timeout because a harness that hangs is a failure, not something to wait out.
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - run: echo "End-to-end harness skipped (wired up in INTEG-01)"
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Override gradle.properties for CI
+        run: |
+          echo "org.gradle.java.home=$JAVA_HOME" > gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+
+      - name: Generate the development certificate
+        run: bash scripts/generate-dev-cert.sh
+
+      - name: Run the end-to-end harness
+        run: ./gradlew :chat-desktop:integTest --stacktrace
+
+      - name: Publish harness results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: |
+            chat-desktop/build/reports/tests/integTest/
+            chat-desktop/build/test-results/integTest/**/*.xml
+          retention-days: 7
 
   dependency-review:
     runs-on: ubuntu-latest

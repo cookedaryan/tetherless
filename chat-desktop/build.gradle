@@ -14,6 +14,27 @@ run {
     systemProperties System.properties
 }
 
+// ---------------------------------------------------------- end-to-end harness
+//
+// INTEG-01. A source set of its own rather than more unit tests, because these boot a relay, open
+// real TLS sockets and run a full conversation through them - too slow to sit in the inner loop,
+// and it is worth being able to run the fast suite without them. CI runs it as a separate job.
+//
+// Declared ahead of the dependency block: the source set is what creates the integTest
+// configurations that block then adds to.
+
+sourceSets {
+    integTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+configurations {
+    integTestImplementation.extendsFrom implementation
+    integTestRuntimeOnly.extendsFrom runtimeOnly
+}
+
 dependencies {
     implementation libs.slf4j.api
     implementation libs.logback.classic
@@ -21,6 +42,29 @@ dependencies {
     implementation libs.flatlaf
     implementation libs.sqlite.jdbc
     testImplementation libs.junit
+
+    // The harness boots the real relay in-process, so it needs the server module. This is a
+    // test-only dependency: nothing in the shipped client links against chat-server.
+    integTestImplementation libs.junit
+    integTestImplementation project(':chat-server')
+}
+
+tasks.register('integTest', Test) {
+    group = 'verification'
+    description = 'Runs the end-to-end exchange between two client cores and a live relay.'
+
+    testClassesDirs = sourceSets.integTest.output.classesDirs
+    classpath = sourceSets.integTest.runtimeClasspath
+
+    // A harness that hangs is a failure, not a build that waits for a person to notice.
+    timeout = java.time.Duration.ofMinutes(5)
+
+    shouldRunAfter tasks.named('test')
+
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat = 'full'
+    }
 }
 
 // ---------------------------------------------------------------- packaging
