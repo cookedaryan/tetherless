@@ -15,7 +15,12 @@
 - **SpotBugs with find-sec-bugs** runs at HIGH confidence and fails the build. Suppressions go in `config/spotbugs/exclude.xml`, scoped to one class or method, with a stated reason. Blanket pattern suppressions are refused.
 - **No literal palette colours.** Every colour comes from `Theme`. `new Color(r, g, b, alpha)` for an alpha overlay derived from a theme colour is fine; a hardcoded RGB is not.
 - **Headed tests must skip when there is no display.** Use `Assume.assumeFalse("no display on this machine", GraphicsEnvironment.isHeadless())` in a `@BeforeClass`, matching `UpdateBannerTest` and `ComposerDraftTest`. CI runs headless.
-- **Tests are written first and watched fail**, per `CONTRIBUTING.md`. A step that says "run it to verify it fails" is not optional.
+- **Tests are written first and watched fail**, per `CONTRIBUTING.md`. A step that says "run it
+  to verify it fails" is not optional.
+- **One exemption:** a *characterization test*, written to pin existing behaviour still while
+  something around it changes, passes on its first run by definition. Task 5 Step 5 and Task 6
+  Step 1 are both of these and are labelled as such. Every other test in this plan must be
+  watched failing before its implementation exists.
 - **Swing rule already in force:** every UI mutation on the event dispatch thread; every crypto and I/O operation off it.
 - **Verification command for the whole module:** `./gradlew :chat-desktop:check`
 
@@ -44,9 +49,9 @@
 | `ui/MessageBubble.java:113` | Drop the `SENDING` case. |
 | `ChatMessage.java` | Remove `Status.SENDING`. |
 | `ui/TranscriptPanel.java` | `scrollTo(String messageId)`, plus a row index to support it. |
-| `ChatWindow.java` | `openPanel`/`closePanel`; delete `showSafetyNumber` and `showChatSearch`; persist delivery status. |
+| `ChatWindow.java` | `openPanel`/`closePanel`; delete `showSafetyNumber` and `showChatSearch`. |
 | `ConversationListPanel.java` | Inline new-chat field; shield for verified peers. |
-| `ChatClient.java` | Save `SENT` or `FAILED` from the transport's answer. |
+| `ChatClient.java` | Save `SENT` or `FAILED` from the transport's answer; persist delivery acknowledgements. |
 | `PeerDirectory.java` | `setVerified` / `isVerified`. |
 | `DesktopConfig.java` | `Preferences` rung in the precedence chain for `updates`. |
 | `core-shared/.../ConnectionManager.java:319` | `sendMessage` returns `boolean`. |
@@ -981,22 +986,105 @@ git commit -m "Let the transport say whether a message actually went"
 ## Task 5: Persist delivery state
 
 **Files:**
-- Modify: `chat-desktop/src/main/java/com/e2eechat/desktop/ChatWindow.java:271-275`
+- Modify: `chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java` — `onDelivered`
+- Test: `chat-desktop/src/test/java/com/e2eechat/desktop/ChatClientTest.java`
 - Test: `chat-desktop/src/test/java/com/e2eechat/desktop/MessageRepositoryTest.java`
 
 **Interfaces:**
 - Consumes: `MessageRepository.updateStatus(String, ChatMessage.Status)` — exists, tested, never called.
 - Produces: nothing new.
 
+**Why the client and not the window.** `ChatWindow` handles `DELIVERY_ACK` at line 270 and updates
+only the in-memory transcript, and only `if (transcript != null)`. So a tick is lost on restart,
+*and* an acknowledgement that arrives while no conversation is open is dropped entirely. Persisting
+in `ChatClient` fixes both, and puts persistence beside the `markOutgoingRead` call that already
+lives there. `ChatWindow` keeps its transcript update unchanged — that is the live repaint.
+
 - [ ] **Step 1: Write the failing test**
 
-Add to `MessageRepositoryTest`:
+In `ChatClientTest`, add a recorder beside the existing `aliceSaved` list:
+
+```java
+    /** Every status advance Alice's repository was asked to make, as "id=STATUS". */
+    private final List<String> statusUpdates = new ArrayList<>();
+```
+
+and override `updateStatus` in `recordingRepository(...)`:
+
+```java
+            @Override
+            public void updateStatus(String messageId, ChatMessage.Status status) {
+                statusUpdates.add(messageId + "=" + status.name());
+            }
+```
+
+Then the test:
 
 ```java
     /**
-     * A double tick has to survive a restart. The transcript updates the bubble in memory when an
-     * acknowledgement arrives; unless the row is advanced too, reopening the app reverts every
-     * delivered message to a single tick.
+     * A delivery acknowledgement advances the stored row, not only the bubble.
+     *
+     * <p>The fake transport hands Alice's message straight to Bob, whose client acknowledges it
+     * automatically, so this exercises the real round trip rather than a synthesised frame.
+     */
+    @Test
+    public void aDeliveryAcknowledgementIsPersisted() {
+        aliceClient.startSecureChat(bobId);
+        statusUpdates.clear();
+
+        String messageId = aliceClient.sendMessage("did this arrive", null);
+
+        assertNotNull(messageId);
+        assertEquals(1, statusUpdates.size());
+        assertEquals(messageId + "=DELIVERED", statusUpdates.get(0));
+    }
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `./gradlew :chat-desktop:test --tests '*ChatClientTest*'`
+Expected: FAIL — `expected:<1> but was:<0>`. Nothing calls `updateStatus` today.
+
+- [ ] **Step 3: Persist the acknowledgement**
+
+In `ChatClient.onDelivered`, extend the non-text branch:
+
+```java
+        if (msg.getType() != MessageType.TEXT_MESSAGE) {
+            if (msg.getType() == MessageType.READ_RECEIPT) {
+                messageRepository.markOutgoingRead(clientId, msg.getSenderId());
+            } else if (msg.getType() == MessageType.DELIVERY_ACK) {
+                // Persisted here rather than in the window. A tick that lives only in the
+                // transcript is gone on restart, and the window only updated it when a
+                // conversation happened to be open, so an acknowledgement arriving at any other
+                // moment was dropped.
+                messageRepository.updateStatus(
+                        new String(msg.getPayload(), StandardCharsets.UTF_8),
+                        ChatMessage.Status.DELIVERED);
+            }
+            broadcast(msg);
+            return;
+        }
+```
+
+Leave `ChatWindow`'s `DELIVERY_ACK` case exactly as it is — that is the live repaint, and it is
+still wanted.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `./gradlew :chat-desktop:test --tests '*ChatClientTest*'`
+Expected: PASS.
+
+- [ ] **Step 5: Pin that the advance survives reopening the database**
+
+This is a characterization test under the Global Constraints exemption — it passes on first run and
+exists to hold existing repository behaviour still while the caller above changes. Add to
+`MessageRepositoryTest`:
+
+```java
+    /**
+     * A double tick has to survive a restart, which means the row has to carry it rather than the
+     * transcript alone.
      */
     @Test
     public void anAdvancedStatusIsStillThereAfterReopeningTheDatabase() {
@@ -1011,31 +1099,19 @@ Add to `MessageRepositoryTest`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails or passes**
-
 Run: `./gradlew :chat-desktop:test --tests '*MessageRepositoryTest*'`
-Expected: PASS. `updateStatus` already works — this test pins the repository half so the next step can be about the caller. If it fails, stop: the repository is broken and that is a different bug.
+Expected: PASS. If it fails, stop — the repository is broken and that is a different bug from this
+task.
 
-- [ ] **Step 3: Call it from the acknowledgement path**
-
-In `ChatWindow.java`, where `DELIVERY_ACK` is handled around line 271, add the repository write beside the in-memory one:
-
-```java
-                    transcript.updateStatus(ackedId, ChatMessage.Status.DELIVERED);
-                    // The bubble alone is not enough: without this the tick is gone on restart.
-                    client.getMessageRepository()
-                            .updateStatus(ackedId, ChatMessage.Status.DELIVERED);
-```
-
-- [ ] **Step 4: Verify**
+- [ ] **Step 6: Verify**
 
 Run: `./gradlew :chat-desktop:check`
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add chat-desktop/src/main/java/com/e2eechat/desktop/ChatWindow.java chat-desktop/src/test/java/com/e2eechat/desktop/MessageRepositoryTest.java
+git add chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java chat-desktop/src/test/java/com/e2eechat/desktop/ChatClientTest.java chat-desktop/src/test/java/com/e2eechat/desktop/MessageRepositoryTest.java
 git commit -m "Keep the delivery tick after a restart"
 ```
 
@@ -1090,7 +1166,9 @@ Note the content is stored unencrypted here on purpose; `decrypt` returns non-Ba
 - [ ] **Step 2: Run test to verify it passes**
 
 Run: `./gradlew :chat-desktop:test --tests '*MessageRepositoryTest*'`
-Expected: PASS. This is a safety net established *before* the removal, not a red test.
+Expected: PASS. This is a characterization test under the Global Constraints exemption — a safety
+net established *before* the removal, not a red test. It is the only reason deleting the constant
+is safe, so it must exist before Step 3.
 
 - [ ] **Step 3: Remove the constant**
 
@@ -1339,16 +1417,30 @@ truth.
 Then draw it. In the row painter, beside where the display name is drawn, add the shield after the
 name so a verified peer is visible without opening anything:
 
+First reserve room for it, so the name still cannot run under the timestamp. In
+`Row.paintComponent`, change the `nameMax` line:
+
+```java
+            int shieldWidth = conversation.isVerified() ? 18 : 0;
+            int nameMax = rightEdge - timeW - 8 - textX - shieldWidth;
+```
+
+Then draw it immediately after the `g2.drawString(ellipsize(...), textX, 26)` call that paints the
+name:
+
 ```java
             if (conversation.isVerified()) {
-                Icon shield = TgIcons.tinted(TgIcons.shield(13), Theme.accent());
-                shield.paintIcon(this, g2, nameX + nameWidth + 4,
-                        nameBaseline - shield.getIconHeight() + 2);
+                int nameW = nameFm.stringWidth(
+                        ellipsize(conversation.getDisplayName(), nameFm, nameMax));
+                // Tinted with `primary`, which is white on a selected row, so the shield stays
+                // legible against the selection colour rather than vanishing into it.
+                TgIcons.tinted(TgIcons.shield(13), primary)
+                        .paintIcon(this, g2, textX + nameW + 5, 15);
             }
 ```
 
-`nameX`, `nameWidth` and `nameBaseline` are whatever the surrounding painter already uses for the
-name; take the existing locals rather than recomputing them.
+`textX`, `nameFm`, `nameMax` and `primary` are existing locals in that method; 26 is the name's
+baseline and 15 puts a 13px icon beside it.
 
 - [ ] **Step 6: Verify**
 
