@@ -290,8 +290,8 @@ public class ConversationListPanel extends JLayeredPane {
 
     private void openSettings() {
         java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
-        if (window instanceof java.awt.Frame) {
-            SidePanel.open((java.awt.Frame) window, SidePanel.Side.LEFT, 420, "Settings",
+        if (window instanceof ChatWindow) {
+            ((ChatWindow) window).openSidePanel(SidePanel.Side.LEFT, 420, "Settings",
                 panel -> new SettingsPanel(client));
         }
     }

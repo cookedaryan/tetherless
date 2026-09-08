@@ -447,8 +447,20 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
     // ------------------------------------------------------------ header actions
 
     private void openPanel(SidePanel.Side side, String title, SidePanel.ContentFactory content) {
+        openSidePanel(side, 380, title, content);
+    }
+
+    /**
+     * Opens a panel over this window, closing whatever was open before.
+     *
+     * <p>Public because the sidebar opens Settings and needs the same owner: a panel opened
+     * around this pair is not recorded, and the next open then fails to close it, leaving two
+     * panels and two scrims stacked over the window.
+     */
+    public void openSidePanel(SidePanel.Side side, int width, String title,
+                              SidePanel.ContentFactory content) {
         closePanel();
-        openPanel = SidePanel.open(this, side, 380, title, content);
+        openPanel = SidePanel.open(this, side, width, title, content);
     }
 
     private void closePanel() {
