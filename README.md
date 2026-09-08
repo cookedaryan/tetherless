@@ -13,12 +13,48 @@ plaintext.
 | `chat-desktop` | Java Swing + SQLite desktop client. |
 | `chat-mobile` | Android + Room mobile client. |
 
+```
+        ┌────────────────────┐                      ┌────────────────────┐
+        │   chat-desktop     │                      │    chat-mobile     │
+        │  Swing + SQLite    │                      │  Android + Room    │
+        └─────────┬──────────┘                      └─────────┬──────────┘
+                  │                                           │
+                  └──────────────┐             ┌──────────────┘
+                                 ▼             ▼
+                         ┌───────────────────────────┐
+                         │       core-shared         │
+                         │  codec · crypto · session │
+                         └─────────────┬─────────────┘
+                                       │  encrypt, sign, frame
+                                       ▼
+                      ═══════════ TLS 1.3, pinned ═══════════
+                                       │
+                         ┌─────────────▼─────────────┐
+                         │        chat-server        │
+                         │  routes by receiver id    │
+                         │  stores nothing           │
+                         │  cannot decrypt anything  │
+                         └───────────────────────────┘
+```
+
+Both clients share one implementation of the protocol, which is the point of `core-shared`: a
+desktop-versus-Android disagreement about the wire format is the defect class this design exists to
+make impossible, and the frozen vectors in `ProtocolVectors` are run on both.
+
 **[docs/security.md](docs/security.md)** describes what the system protects, what it does not, and
 which tests back each claim. Read the limitations section before trusting it with anything that
 matters.
 
-See [docs/development_plan.md](docs/development_plan.md) for the ticket-wise plan, threat model,
-and definition of done.
+| Document | What it covers |
+|---|---|
+| [docs/security.md](docs/security.md) | Threat model, guarantees, and — the part worth reading — the non-guarantees. |
+| [docs/protocol.md](docs/protocol.md) | The wire format, byte by byte, and the handshake state machine. |
+| [docs/adr.md](docs/adr.md) | Why the load-bearing decisions were made, including the ones now regretted. |
+| [docs/qa_script.md](docs/qa_script.md) | The manual pass run before tagging a release. |
+| [docs/deployment.md](docs/deployment.md) | Running a relay for real. |
+| [docs/tls_provisioning.md](docs/tls_provisioning.md) | Issuing and pinning a certificate that is not the development one. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | The rules a change has to follow, and why each exists. |
+| [docs/development_plan.md](docs/development_plan.md) | The ticket-wise plan and definition of done. |
 
 ## Getting started
 
@@ -77,8 +113,25 @@ Then start a desktop client in another terminal:
 ```
 
 On first launch the client asks for a display name and a passphrase, generates your RSA identity,
-and stores it under `~/.tetherless/`. Your peer id is shown under **Menu → My identity**; share it
-so others can start a secure chat with you.
+and stores it under `~/.tetherless/`. Your peer id is under **Menu → Settings → Copy my id**; share
+it so others can start a secure chat with you, and open one to someone else's with **Menu → New
+chat…**.
+
+To run two identities on one machine, point each at its own profile directory:
+
+```bash
+./gradlew :chat-desktop:run -Dtetherless.config.dir=C:/Temp/alice
+```
+
+### 5. The end-to-end harness
+
+```bash
+./gradlew :chat-desktop:integTest
+```
+
+Boots the relay on an ephemeral port, runs two client cores through a full conversation — handshake,
+a hundred messages each way, disconnect — and asserts that no plaintext appears in anything the
+relay routed. It is kept out of `build` because it opens real sockets; CI runs it as its own job.
 
 
 ## Packaging a release

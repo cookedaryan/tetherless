@@ -119,11 +119,20 @@ what protects message content, which is already encrypted before it reaches the 
 
 *Captured frames re-sent, or delivered out of order.*
 
-Each message carries a monotonic counter inside its nonce, tracked per session in a 1024-entry
-sliding window, so a replay is rejected while genuine reordering still delivers. Timestamps more
-than five minutes from local time are rejected.
+Each message carries a monotonic counter inside its nonce, remembered per session so a replay is
+rejected while genuine reordering still delivers. Timestamps more than five minutes from local time
+are rejected.
 
 Tested: `replayingACapturedMessageIsRejected`, `reorderedMessagesAreStillDelivered`.
+
+**With one caveat this document previously overstated.** The set of seen counters is capped at 1024
+and *evicts the oldest*; it does not keep a low-water mark. Once 1024 further messages have passed
+on a session, the earliest counter is forgotten and a frame carrying it would be accepted again. The
+five-minute timestamp check is what keeps this from mattering in practice — a replay has to land
+inside five minutes *and* after 1024 further messages — but the protection is bounded by message
+count, not by age, and calling it a sliding window was too generous. Tracking the highest counter
+seen and rejecting anything at or below `highest - 1024` would close it, costs nothing, and has not
+been done.
 
 ### T5 — Malicious peer payload
 
@@ -238,9 +247,16 @@ connections around it.
 
 ### Session expiry is not implemented
 
-`Session.State.EXPIRED` exists and is never set. There is no TTL and no message-count cap forcing
-re-keying, so a long-lived session keeps one key indefinitely. The nonce counter is 64-bit and will
-not realistically wrap, but the absence of re-keying compounds the forward-secrecy limitation above.
+`Session.State.EXPIRED` exists and is never set. There is no TTL and nothing that re-keys, so a
+long-lived session keeps one key for as long as it lasts, which compounds the forward-secrecy
+limitation above.
+
+There *is* a ceiling, and it is not a graceful one: `Session.getNextSendCounter()` throws after
+100,000 sends on a session — "rekey required" — and since nothing re-keys, the sender simply stops
+being able to send to that peer. The caller catches it and returns no message id, so it surfaces as
+messages that quietly do not go rather than as a crash. A human conversation will not reach 100,000
+messages; anything automated could, and would then be stuck until the session was renegotiated by
+hand.
 
 ### No multi-device, no groups, no attachments
 
