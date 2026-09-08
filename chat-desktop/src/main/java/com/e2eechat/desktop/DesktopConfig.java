@@ -137,8 +137,8 @@ public final class DesktopConfig {
                 file.getProperty(TRUSTSTORE_PASSWORD_KEY),
                 null);
 
-        // Precedence, lowest last: arguments, system properties, config.properties, the settings
-        // toggle, then the built-in default. The toggle sits below configuration deliberately - a
+        // Precedence, lowest last: system properties, config.properties, the settings toggle,
+        // then the built-in default. The toggle sits below configuration deliberately - a
         // deployment that mandates updates=false must not be overridable from the settings sheet.
         boolean updates = !"false".equalsIgnoreCase(firstNonEmpty(
                 System.getProperty(UpdateChecker.ENABLED_PROPERTY),

@@ -74,11 +74,6 @@ public class SettingsPanel extends JPanel {
                 "Turns off the animations throughout the app.",
                 toggle(Motion.isReducedMotion(), Motion::setReducedMotion)));
 
-        body.add(sectionTitle("Connection"));
-        body.add(new Row(TgIcons.plug(19), "Relay",
-                client.getRelayDescription(), null));
-        body.add(new Row(TgIcons.key(19), "Certificate", trustDescription(), null));
-
         body.add(sectionTitle("Privacy"));
         body.add(new Row(TgIcons.info(19), "Check for updates on startup",
                 "Asks GitHub whether a newer version exists. GitHub, and anyone watching the "
@@ -88,6 +83,11 @@ public class SettingsPanel extends JPanel {
                     DesktopConfig.setUpdateChecksPreference(value);
                     System.setProperty(UpdateChecker.ENABLED_PROPERTY, String.valueOf(value));
                 })));
+
+        body.add(sectionTitle("Connection"));
+        body.add(new Row(TgIcons.plug(19), "Relay",
+                client.getRelayDescription(), null));
+        body.add(new Row(TgIcons.key(19), "Certificate", trustDescription(), null));
 
         body.add(sectionTitle("About"));
         body.add(new Row(TgIcons.info(19), "Version",
