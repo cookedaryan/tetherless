@@ -8,16 +8,18 @@ import com.e2eechat.desktop.ui.SidePanel;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.JComponent;
+import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
 import javax.swing.JList;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
 import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
@@ -34,6 +36,8 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
@@ -67,6 +71,8 @@ public class ConversationListPanel extends JLayeredPane {
     private final DefaultListModel<Conversation> model = new DefaultListModel<>();
     private final JList<Conversation> list = new JList<>(model);
     private final JTextField searchField = new JTextField();
+    private final JTextField newChatField = new JTextField();
+    private final JLabel newChatError = new JLabel(" ");
     private final IconButton composeButton;
     private final JPanel root = new JPanel(new BorderLayout());
 
@@ -83,6 +89,7 @@ public class ConversationListPanel extends JLayeredPane {
         root.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.divider()));
         root.add(buildHeader(), BorderLayout.NORTH);
         root.add(buildList(), BorderLayout.CENTER);
+        installNewChatField();
 
         composeButton = buildComposeButton();
 
@@ -166,7 +173,23 @@ public class ConversationListPanel extends JLayeredPane {
         header.add(menu, BorderLayout.WEST);
         header.add(searchWrap, BorderLayout.CENTER);
         header.add(trailing, BorderLayout.EAST);
+        header.add(buildNewChatPanel(), BorderLayout.SOUTH);
         return header;
+    }
+
+    /**
+     * Wraps the inline new-chat field and its error label so they sit as one row beneath the
+     * header's menu/search/theme-toggle row. Both children start invisible; {@link BorderLayout}
+     * skips invisible children when it measures preferred size, so this row costs nothing until
+     * {@link #promptNewChat()} reveals it.
+     */
+    private JComponent buildNewChatPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 4));
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
+        panel.add(newChatField, BorderLayout.NORTH);
+        panel.add(newChatError, BorderLayout.SOUTH);
+        return panel;
     }
 
     private JComponent buildList() {
@@ -273,29 +296,104 @@ public class ConversationListPanel extends JLayeredPane {
         }
     }
 
-    private void promptNewChat() {
-        String entered = JOptionPane.showInputDialog(this,
-                "Enter the peer's id (32 characters, e.g. 4f3a91c2-8b7e05d6-...):",
-                "New chat", JOptionPane.PLAIN_MESSAGE);
+    /** The canonical id for what was typed, or null when it cannot be used. */
+    static String validateNewChatId(String entered, String ownId) {
         if (entered == null || entered.trim().isEmpty()) {
-            return;
+            return null;
         }
-        // Accept whatever form the user pasted - grouped, spaced, or upper case - but store the
-        // canonical id, since routing compares it byte for byte.
+        String peerId = PeerId.parse(entered);
+        if (peerId == null || peerId.equals(ownId)) {
+            return null;
+        }
+        return peerId;
+    }
+
+    /** What to show beneath the field, or null while there is nothing to say. */
+    static String newChatError(String entered, String ownId) {
+        if (entered == null || entered.trim().isEmpty()) {
+            return null;
+        }
         String peerId = PeerId.parse(entered);
         if (peerId == null) {
-            JOptionPane.showMessageDialog(this,
-                    "That is not a peer id.\n\nAn id is 32 hex characters derived from the peer's\n"
-                            + "identity key. Ask them for it under Menu > My identity.",
-                    "New chat", JOptionPane.WARNING_MESSAGE);
-            return;
+            return "That is not a peer id. An id is 32 hex characters.";
         }
-        if (peerId.equals(client.getClientId())) {
-            JOptionPane.showMessageDialog(this, "That is your own id.",
-                    "New chat", JOptionPane.WARNING_MESSAGE);
-            return;
+        if (peerId.equals(ownId)) {
+            return "That is your own id.";
         }
-        openConversation(peerId);
+        return null;
+    }
+
+    /**
+     * Reveals the new-chat field in the sidebar header.
+     *
+     * <p>This was a prompt dialog whose rejection opened a second dialog, so correcting a mistyped
+     * id meant dismissing a window before you could reach the box you had typed it in. The error
+     * now appears under the field, and what you typed is still there to fix.
+     */
+    private void promptNewChat() {
+        newChatField.setText("");
+        newChatError.setText(" ");
+        newChatField.setVisible(true);
+        newChatError.setVisible(true);
+        revalidate();
+        newChatField.requestFocusInWindow();
+    }
+
+    /** Builds the field once, in the sidebar header, hidden until it is wanted. */
+    private void installNewChatField() {
+        newChatField.setFont(Theme.font(Font.PLAIN, 14f));
+        newChatField.setVisible(false);
+        newChatError.setFont(Theme.font(Font.PLAIN, 11f));
+        newChatError.setForeground(Theme.danger());
+        newChatError.setVisible(false);
+
+        newChatField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                showError();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                showError();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                showError();
+            }
+
+            private void showError() {
+                String message = newChatError(newChatField.getText(), client.getClientId());
+                newChatError.setText(message == null ? " " : message);
+            }
+        });
+
+        newChatField.addActionListener(e -> {
+            String peerId = validateNewChatId(newChatField.getText(), client.getClientId());
+            if (peerId == null) {
+                return;
+            }
+            hideNewChatField();
+            openConversation(peerId);
+        });
+
+        newChatField.getInputMap(WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "cancel-new-chat");
+        newChatField.getActionMap().put("cancel-new-chat", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                hideNewChatField();
+            }
+        });
+    }
+
+    private void hideNewChatField() {
+        newChatField.setVisible(false);
+        newChatError.setVisible(false);
+        newChatField.setText("");
+        revalidate();
+        repaint();
     }
 
     /** Selects an existing conversation or inserts a placeholder row for a brand-new peer. */
