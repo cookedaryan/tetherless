@@ -39,7 +39,8 @@ public class DatabaseHelper {
             if (!columns.contains("message_id")) {
                 stmt.execute("ALTER TABLE messages ADD COLUMN message_id TEXT");
             }
-            // status: SENDING / SENT / DELIVERED / READ / FAILED, drives the tick glyph.
+            // status: SENT / DELIVERED / READ / FAILED, drives the tick glyph.
+            // Legacy rows may still have 'SENDING', which MessageRepository.readRow tolerates.
             if (!columns.contains("status")) {
                 stmt.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'SENT'");
             }
