@@ -347,6 +347,7 @@ public class ConversationListPanel extends JLayeredPane {
                     // Names live in the peer directory now, not in the id, so resolve them here.
                     for (Conversation c : loaded) {
                         c.setDisplayName(client.displayNameFor(c.getPeerId()));
+                        c.setVerified(client.getPeerDirectory().isVerified(c.getPeerId()));
                     }
                     // Keep any placeholder rows for peers with no messages yet.
                     for (Conversation existing : allConversations) {
@@ -407,7 +408,6 @@ public class ConversationListPanel extends JLayeredPane {
         updated.setDisplayName(client.displayNameFor(peerId));
         if (existing != null) {
             allConversations.remove(existing);
-            updated.setVerified(existing.isVerified());
         }
         allConversations.add(0, updated);
         String selectedPeer = list.getSelectedValue() != null
@@ -539,12 +539,21 @@ public class ConversationListPanel extends JLayeredPane {
             g2.setColor(secondary);
             g2.drawString(time, rightEdge - timeW, 26);
 
-            // Name, truncated so it never runs under the timestamp.
+            // Name, truncated so it never runs under the timestamp (or the verified shield).
             g2.setFont(Theme.chatName());
             FontMetrics nameFm = g2.getFontMetrics();
-            int nameMax = rightEdge - timeW - 8 - textX;
+            int shieldWidth = conversation.isVerified() ? 18 : 0;
+            int nameMax = rightEdge - timeW - 8 - textX - shieldWidth;
             g2.setColor(primary);
             g2.drawString(ellipsize(conversation.getDisplayName(), nameFm, nameMax), textX, 26);
+            if (conversation.isVerified()) {
+                int nameW = nameFm.stringWidth(
+                        ellipsize(conversation.getDisplayName(), nameFm, nameMax));
+                // Tinted with `primary`, which is white on a selected row, so the shield stays
+                // legible against the selection colour rather than vanishing into it.
+                TgIcons.tinted(TgIcons.shield(13), primary)
+                        .paintIcon(this, g2, textX + nameW + 5, 15);
+            }
 
             // Unread pill, right-aligned on the preview's baseline.
             int previewRight = rightEdge;

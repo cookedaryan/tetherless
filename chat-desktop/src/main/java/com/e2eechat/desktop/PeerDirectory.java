@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -29,13 +30,18 @@ public class PeerDirectory {
 
     private static final Logger logger = LoggerFactory.getLogger(PeerDirectory.class);
     private static final String FILE_NAME = "peer-names.properties";
+    private static final String VERIFIED_FILE_NAME = "peer-verification.properties";
 
     private final File file;
+    private final File verifiedFile;
     private final ConcurrentMap<String, String> names = new ConcurrentHashMap<>();
+    private final Set<String> verified = ConcurrentHashMap.newKeySet();
 
     public PeerDirectory(File configDir) {
         this.file = new File(configDir, FILE_NAME);
+        this.verifiedFile = new File(configDir, VERIFIED_FILE_NAME);
         load();
+        loadVerified();
     }
 
     private void load() {
@@ -95,6 +101,57 @@ public class PeerDirectory {
     /** True when the peer has actually told us a name, rather than us falling back to their id. */
     public boolean hasName(String peerId) {
         return peerId != null && names.containsKey(peerId);
+    }
+
+    private void loadVerified() {
+        if (!verifiedFile.exists()) {
+            return;
+        }
+        Properties props = new Properties();
+        try (FileInputStream in = new FileInputStream(verifiedFile)) {
+            props.load(in);
+        } catch (Exception e) {
+            logger.warn("Could not read {}", verifiedFile, e);
+            return;
+        }
+        for (String key : props.stringPropertyNames()) {
+            if (Boolean.parseBoolean(props.getProperty(key))) {
+                verified.add(key);
+            }
+        }
+    }
+
+    /**
+     * Records that the local user has compared safety numbers with this peer and they matched.
+     *
+     * <p>This is the user's own judgement, not anything the peer asserted, which is why it lives in
+     * its own file rather than beside the names peers claim for themselves.
+     */
+    public synchronized void setVerified(String peerId, boolean isVerified) {
+        if (peerId == null) {
+            return;
+        }
+        boolean changed = isVerified ? verified.add(peerId) : verified.remove(peerId);
+        if (changed) {
+            persistVerified();
+        }
+    }
+
+    /** True when the user has marked this peer verified. */
+    public boolean isVerified(String peerId) {
+        return peerId != null && verified.contains(peerId);
+    }
+
+    private void persistVerified() {
+        Properties props = new Properties();
+        for (String peerId : verified) {
+            props.setProperty(peerId, "true");
+        }
+        try (FileOutputStream out = new FileOutputStream(verifiedFile)) {
+            props.store(out, "Peers whose safety number this user has compared and accepted.");
+        } catch (Exception e) {
+            logger.error("Could not persist peer verification to {}", verifiedFile, e);
+        }
     }
 
     private void persist() {
