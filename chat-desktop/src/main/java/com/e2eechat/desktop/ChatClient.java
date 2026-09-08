@@ -263,6 +263,14 @@ public class ChatClient implements MessageListener {
         if (msg.getType() != MessageType.TEXT_MESSAGE) {
             if (msg.getType() == MessageType.READ_RECEIPT) {
                 messageRepository.markOutgoingRead(clientId, msg.getSenderId());
+            } else if (msg.getType() == MessageType.DELIVERY_ACK) {
+                // Persisted here rather than in the window. A tick that lives only in the
+                // transcript is gone on restart, and the window only updated it when a
+                // conversation happened to be open, so an acknowledgement arriving at any other
+                // moment was dropped.
+                messageRepository.updateStatus(
+                        new String(msg.getPayload(), StandardCharsets.UTF_8),
+                        ChatMessage.Status.DELIVERED);
             }
             broadcast(msg);
             return;

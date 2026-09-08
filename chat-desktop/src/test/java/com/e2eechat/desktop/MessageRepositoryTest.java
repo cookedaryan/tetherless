@@ -250,6 +250,22 @@ public class MessageRepositoryTest {
                 repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
     }
 
+    /**
+     * A double tick has to survive a restart, which means the row has to carry it rather than the
+     * transcript alone.
+     */
+    @Test
+    public void anAdvancedStatusIsStillThereAfterReopeningTheDatabase() {
+        repository.saveMessage("m1", ALICE, BOB, "delivered later", 1,
+                ChatMessage.Status.SENT, null, null, null, true);
+
+        repository.updateStatus("m1", ChatMessage.Status.DELIVERED);
+
+        MessageRepository reopened = new MessageRepository(dbPath, dbKey);
+        assertEquals(ChatMessage.Status.DELIVERED,
+                reopened.getMessages(ALICE, BOB, 10).get(0).getStatus());
+    }
+
     @Test
     public void aReadReceiptAdvancesSentAndDeliveredMessagesOnly() {
         repository.saveMessage("m1", ALICE, BOB, "sent", 1,

@@ -67,6 +67,9 @@ public class ChatClientTest {
     /** Status of every message Alice's repository was asked to store, in order. */
     private final List<String> savedStatuses = new ArrayList<>();
 
+    /** Every status advance Alice's repository was asked to make, as "id=STATUS". */
+    private final List<String> statusUpdates = new ArrayList<>();
+
     private String aliceId;
     private String bobId;
 
@@ -93,7 +96,7 @@ public class ChatClientTest {
 
         aliceClient = new ChatClient(aliceId, aliceKeys,
                 new SessionManager(aliceId, aliceLookup),
-                recordingRepository(dbKey, aliceSaved, savedStatuses),
+                recordingRepository(dbKey, aliceSaved, savedStatuses, statusUpdates),
                 keyStore(aliceKeys, bobKeys.getPublic()),
                 new PeerDirectory(aliceDir), "Alice");
         bobClient = new ChatClient(bobId, bobKeys,
@@ -120,7 +123,8 @@ public class ChatClientTest {
 
     /** Records what was stored, so a test can tell a message that went from one that did not. */
     private static MessageRepository recordingRepository(SecretKey dbKey, List<String> saved,
-                                                          List<String> statuses) {
+                                                          List<String> statuses,
+                                                          List<String> statusUpdates) {
         return new MessageRepository(":memory:", dbKey) {
             @Override
             public void saveMessage(String sender, String receiver, String content, long timestamp) {
@@ -133,6 +137,11 @@ public class ChatClientTest {
                                     String replyToSender, String replyToPreview, boolean markRead) {
                 saved.add(content);
                 statuses.add(status.name());
+            }
+
+            @Override
+            public void updateStatus(String messageId, ChatMessage.Status status) {
+                statusUpdates.add(messageId + "=" + status.name());
             }
         };
     }
@@ -404,6 +413,24 @@ public class ChatClientTest {
 
         assertEquals(1, savedStatuses.size());
         assertEquals("SENT", savedStatuses.get(0));
+    }
+
+    /**
+     * A delivery acknowledgement advances the stored row, not only the bubble.
+     *
+     * <p>The fake transport hands Alice's message straight to Bob, whose client acknowledges it
+     * automatically, so this exercises the real round trip rather than a synthesised frame.
+     */
+    @Test
+    public void aDeliveryAcknowledgementIsPersisted() {
+        aliceClient.startSecureChat(bobId);
+        statusUpdates.clear();
+
+        String messageId = aliceClient.sendMessage("did this arrive", null);
+
+        assertNotNull(messageId);
+        assertEquals(1, statusUpdates.size());
+        assertEquals(messageId + "=DELIVERED", statusUpdates.get(0));
     }
 
     /** Swaps Alice's transport for one that refuses everything, as a closed connection would. */
