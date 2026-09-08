@@ -20,6 +20,25 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConnectionManager {
     private static final Logger logger = LoggerFactory.getLogger(ConnectionManager.class);
+
+    /** Ceiling on the retry delay. The schedule is flat once it is reached. */
+    static final long MAX_BACKOFF_MILLIS = 60000;
+
+    /** Highest attempt number that still doubles the ceiling. */
+    static final int MAX_ATTEMPT = 10;
+
+    /**
+     * How long a connection must stand up before it counts as healthy.
+     *
+     * <p>Below this, a drop is treated as another failed attempt. A relay that accepts the
+     * handshake and then immediately closes - one that is overloaded, half-started, or shedding
+     * load - would otherwise reset the backoff on every cycle and be met with an unthrottled
+     * reconnect loop.
+     */
+    static final long STABLE_CONNECTION_MILLIS = 10000;
+
+    /** How long {@link #stop()} waits for the writer to stand down before it writes the farewell. */
+    private static final long WRITER_SHUTDOWN_MILLIS = 200;
     
     protected final String host;
     protected final int port;
@@ -68,41 +87,77 @@ public class ConnectionManager {
         }
     }
 
+    /**
+     * Upper bound on the delay before retrying attempt {@code attempt}, in milliseconds.
+     *
+     * <p>Doubles per consecutive failure from one second, then holds at
+     * {@link #MAX_BACKOFF_MILLIS}, so a relay that stays down does not accumulate an unbounded
+     * retry rate against it.
+     */
+    static long backoffCeilingMillis(int attempt) {
+        if (attempt >= MAX_ATTEMPT) {
+            return MAX_BACKOFF_MILLIS;
+        }
+        return Math.min(1000L << attempt, MAX_BACKOFF_MILLIS);
+    }
+
+    /**
+     * The delay actually waited before retrying, drawn uniformly from below the ceiling.
+     *
+     * <p>Full jitter rather than a fixed schedule: when a relay restarts, every client that was
+     * attached to it retries at the same moment, and an undithered schedule would keep them
+     * synchronised on every subsequent attempt as well.
+     *
+     * <p>Overridable so a test can drive the reconnect path without waiting out a real delay.
+     */
+    protected long backoffDelayMillis(int attempt) {
+        return (long) (Math.random() * backoffCeilingMillis(attempt));
+    }
+
     private void connectLoop() {
         int attempt = 0;
-        final long MAX_BACKOFF = 60000;
-        
+
         while (running.get()) {
+            long connectedAt = 0;
             try {
-                updateState(attempt == 0 ? ConnectionState.CONNECTING : ConnectionState.RECONNECTING);
-                
+                updateState(attempt == 0
+                        ? ConnectionState.CONNECTING : ConnectionState.RECONNECTING);
+
                 connectInternal();
-                
+
                 updateState(ConnectionState.CONNECTED);
-                attempt = 0; // reset backoff on successful connect
-                
-                // Block until disconnected
+                connectedAt = System.currentTimeMillis();
+
+                // Block until disconnected.
                 waitForDisconnect();
-                
             } catch (Exception e) {
-                if (!running.get()) {
-                    break;
-                }
-                
-                long backoff = Math.min((1000L << attempt), MAX_BACKOFF);
-                long jitter = (long) (Math.random() * backoff);
-                logger.warn("Connection failed. Retrying in {} ms", jitter, e);
-                
+                logger.warn("Connection attempt {} failed", attempt, e);
+            }
+
+            if (!running.get()) {
+                break;
+            }
+
+            // Only a connection that stood up earns a clean slate. Backing off after a drop as
+            // well as after a failure is the point: the drop path is the common one, and without
+            // this the loop reconnects with no delay at all.
+            if (connectedAt != 0
+                    && System.currentTimeMillis() - connectedAt >= STABLE_CONNECTION_MILLIS) {
+                attempt = 0;
+            }
+
+            long delay = backoffDelayMillis(attempt);
+            if (delay > 0) {
                 try {
-                    Thread.sleep(jitter);
+                    Thread.sleep(delay);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
                 }
-                
-                if (attempt < 10) {
-                    attempt++;
-                }
+            }
+
+            if (attempt < MAX_ATTEMPT) {
+                attempt++;
             }
         }
     }
@@ -213,32 +268,41 @@ public class ConnectionManager {
     }
 
     public void stop() {
+        // Read before the state moves. This is what decides whether there is still a live
+        // connection to say goodbye on, and updateState() below would already have answered no -
+        // which is why the relay never used to be told that a client had left.
+        boolean wasConnected = state == ConnectionState.CONNECTED;
+
         running.set(false);
         updateState(ConnectionState.DISCONNECTED);
-        
-        try {
-            if (state == ConnectionState.CONNECTED && out != null) {
-                Message disconnectMsg = new MessageBuilder()
+
+        if (wasConnected && out != null) {
+            // The writer loop is stopping and will not drain the queue, so the frame goes out on
+            // this thread. Stand the writer down first so the two cannot interleave mid-frame.
+            if (writerThread != null) {
+                writerThread.interrupt();
+                try {
+                    writerThread.join(WRITER_SHUTDOWN_MILLIS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            try {
+                out.writeMessage(new MessageBuilder()
                         .setType(MessageType.DISCONNECT)
                         .setSenderId(clientId)
                         .setMessageId(UUID.randomUUID().toString())
                         .setTimestamp(System.currentTimeMillis())
-                        .buildUnsigned();
-                outboundQueue.offer(disconnectMsg);
-                
-                // wait up to 500ms for queue to drain
-                int attempts = 0;
-                while (!outboundQueue.isEmpty() && attempts < 50) {
-                    Thread.sleep(10);
-                    attempts++;
-                }
-                Thread.sleep(50);
+                        .buildUnsigned());
+            } catch (Exception e) {
+                logger.warn("Could not send DISCONNECT during shutdown", e);
             }
-        } catch (Exception e) {
-            logger.warn("Error sending DISCONNECT during shutdown", e);
         }
-        
+
         closeSocket();
-        reconnectExecutor.shutdownNow();
+        // Null when stop() is called on a manager that was never started.
+        if (reconnectExecutor != null) {
+            reconnectExecutor.shutdownNow();
+        }
     }
 }

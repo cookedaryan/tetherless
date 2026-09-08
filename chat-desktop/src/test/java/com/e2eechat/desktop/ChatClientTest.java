@@ -1,20 +1,26 @@
 package com.e2eechat.desktop;
-import com.e2eechat.core.network.MessageListener;
-import com.e2eechat.core.network.ConnectionState;
-import com.e2eechat.core.network.ConnectionManager;
 
 import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.core.keys.IdentityKeyStore;
 import com.e2eechat.core.models.Message;
 import com.e2eechat.core.models.MessageBuilder;
 import com.e2eechat.core.models.MessageType;
+import com.e2eechat.core.network.ConnectionManager;
+import com.e2eechat.core.network.ConnectionState;
+import com.e2eechat.core.network.MessageListener;
 import com.e2eechat.core.session.Session;
 import com.e2eechat.core.session.SessionManager;
+
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.File;
+import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PublicKey;
@@ -24,198 +30,272 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
+/**
+ * The send and receive pipeline, over a fake transport.
+ *
+ * <p>Two clients are wired directly to each other in place of the relay, so every frame that would
+ * have crossed the network is captured and can be asserted on. That is the point of the fixture:
+ * what leaves a client has to be ciphertext, and a frame that was altered in flight has to be
+ * dropped rather than rendered.
+ *
+ * <p>Swing is deliberately absent. The pipeline lives in {@link ChatClient}, and testing it does
+ * not need a window.
+ */
 public class ChatClientTest {
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
 
     private ChatClient aliceClient;
     private ChatClient bobClient;
-    private List<Message> aliceToBob;
-    private List<Message> bobToAlice;
-    private String aliceIdStr;
-    private String bobIdStr;
 
-    @org.junit.Rule
-    public org.junit.rules.TemporaryFolder tmp = new org.junit.rules.TemporaryFolder();
+    /** Every frame Alice put on the wire, in order. */
+    private final List<Message> aliceToBob = new ArrayList<>();
+
+    /** Every frame Bob put on the wire, in order. */
+    private final List<Message> bobToAlice = new ArrayList<>();
+
+    private String aliceId;
+    private String bobId;
 
     @Before
     public void setUp() throws Exception {
-        KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
-        kpg.initialize(2048);
-        KeyPair aliceId = kpg.generateKeyPair();
-        KeyPair bobId = kpg.generateKeyPair();
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair aliceKeys = generator.generateKeyPair();
+        KeyPair bobKeys = generator.generateKeyPair();
 
         // Ids are derived from the identity keys. A HELLO whose sender id is not the hash of the
-        // key it carries is now rejected, so the test has to use real ids rather than "Alice".
-        aliceIdStr = PeerId.of(aliceId.getPublic());
-        bobIdStr = PeerId.of(bobId.getPublic());
-        java.io.File dirA = tmp.newFolder("alice");
-        java.io.File dirB = tmp.newFolder("bob");
+        // key it carries is rejected, so the fixture has to use real ids rather than "Alice".
+        aliceId = PeerId.of(aliceKeys.getPublic());
+        bobId = PeerId.of(bobKeys.getPublic());
 
+        File aliceDir = tmp.newFolder("alice");
+        File bobDir = tmp.newFolder("bob");
         SecretKey dbKey = new SecretKeySpec(new byte[32], "AES");
-        
-        aliceToBob = new ArrayList<>();
-        bobToAlice = new ArrayList<>();
 
-        MessageRepository dummyRepoAlice = new MessageRepository(":memory:", dbKey) {
-            @Override public void saveMessage(String sender, String receiver, String content, long timestamp) {}
-        };
-        
-        MessageRepository dummyRepoBob = new MessageRepository(":memory:", dbKey) {
-            @Override public void saveMessage(String sender, String receiver, String content, long timestamp) {}
-        };
+        Function<String, PublicKey> aliceLookup =
+            id -> bobId.equals(id) ? bobKeys.getPublic() : null;
+        Function<String, PublicKey> bobLookup =
+            id -> aliceId.equals(id) ? aliceKeys.getPublic() : null;
 
-        IdentityKeyStore dummyStoreAlice = new IdentityKeyStore() {
-            @Override public KeyPair loadOrCreateIdentity(char[] passphrase) { return aliceId; }
-            @Override public void storePeerKey(String peerId, PublicKey key) {}
-            @Override public Optional<PublicKey> getPeerKey(String peerId) { return Optional.of(bobId.getPublic()); }
-            @Override public String fingerprint(PublicKey key) { return "bob-fp"; }
-        };
-        
-        IdentityKeyStore dummyStoreBob = new IdentityKeyStore() {
-            @Override public KeyPair loadOrCreateIdentity(char[] passphrase) { return bobId; }
-            @Override public void storePeerKey(String peerId, PublicKey key) {}
-            @Override public Optional<PublicKey> getPeerKey(String peerId) { return Optional.of(aliceId.getPublic()); }
-            @Override public String fingerprint(PublicKey key) { return "alice-fp"; }
-        };
+        aliceClient = new ChatClient(aliceId, aliceKeys,
+                new SessionManager(aliceId, aliceLookup),
+                discardingRepository(dbKey), keyStore(aliceKeys, bobKeys.getPublic()),
+                new PeerDirectory(aliceDir), "Alice");
+        bobClient = new ChatClient(bobId, bobKeys,
+                new SessionManager(bobId, bobLookup),
+                discardingRepository(dbKey), keyStore(bobKeys, aliceKeys.getPublic()),
+                new PeerDirectory(bobDir), "Bob");
 
-        Function<String, PublicKey> aliceLookup = id -> bobIdStr.equals(id) ? bobId.getPublic() : null;
-        Function<String, PublicKey> bobLookup = id -> aliceIdStr.equals(id) ? aliceId.getPublic() : null;
+        injectTransport(aliceClient, aliceToBob, bobClient);
+        injectTransport(bobClient, bobToAlice, aliceClient);
 
-        SessionManager aliceSM = new SessionManager(aliceIdStr, aliceLookup);
-        SessionManager bobSM = new SessionManager(bobIdStr, bobLookup);
+        aliceClient.addMessageListener(silentListener());
+        bobClient.addMessageListener(silentListener());
+    }
 
-        aliceClient = new ChatClient(aliceIdStr, aliceId, aliceSM, dummyRepoAlice, dummyStoreAlice, new PeerDirectory(dirA), "Alice") {
-            // Mock connection manager
+    /** Persistence is not what these tests are about; MessageRepositoryTest covers it. */
+    private static MessageRepository discardingRepository(SecretKey dbKey) {
+        return new MessageRepository(":memory:", dbKey) {
             @Override
-            public void startSecureChat(String peerId) {
-                System.out.println("aliceClient.startSecureChat called!");
-                try {
-                    super.startSecureChat(peerId);
-                    System.out.println("aliceClient.startSecureChat SUCCESS!");
-                } catch (Exception e) {
-                    System.out.println("aliceClient.startSecureChat THREW: " + e.getMessage());
-                    e.printStackTrace();
-                }
+            public void saveMessage(String sender, String receiver, String content, long timestamp) {
+                // Discarded.
             }
         };
-        
-        // Use reflection or just a custom ConnectionManager to mock the network
-        ConnectionManager mockAliceConn = new ConnectionManager("localhost", 0, aliceIdStr, aliceClient) {
-            @Override public void sendMessage(Message msg) { 
-                System.out.println("ALICE SENDING: " + msg.getType());
-                aliceToBob.add(msg); 
-                bobClient.onMessageReceived(msg); 
+    }
+
+    private static IdentityKeyStore keyStore(KeyPair own, PublicKey peer) {
+        return new IdentityKeyStore() {
+            @Override
+            public KeyPair loadOrCreateIdentity(char[] passphrase) {
+                return own;
             }
-            @Override public void start() {}
-        };
-        
-        bobClient = new ChatClient(bobIdStr, bobId, bobSM, dummyRepoBob, dummyStoreBob, new PeerDirectory(dirB), "Bob");
-        ConnectionManager mockBobConn = new ConnectionManager("localhost", 0, bobIdStr, bobClient) {
-            @Override public void sendMessage(Message msg) { 
-                System.out.println("BOB SENDING: " + msg.getType());
-                bobToAlice.add(msg); 
-                aliceClient.onMessageReceived(msg); 
+
+            @Override
+            public void storePeerKey(String peerId, PublicKey key) {
+                // Nothing to persist in a test.
             }
-            @Override public void start() {}
+
+            @Override
+            public Optional<PublicKey> getPeerKey(String peerId) {
+                return Optional.of(peer);
+            }
+
+            @Override
+            public String fingerprint(PublicKey key) {
+                return "fingerprint";
+            }
         };
-        
-        // Inject via reflection since it's private and we don't have a setter
-        java.lang.reflect.Field cmField = ChatClient.class.getDeclaredField("connectionManager");
-        cmField.setAccessible(true);
-        cmField.set(aliceClient, mockAliceConn);
-        cmField.set(bobClient, mockBobConn);
-        
-        MessageListener dummyListener = new MessageListener() {
-            @Override public void onMessageReceived(Message msg) {}
-            @Override public void onConnectionStateChanged(ConnectionState state) {}
+    }
+
+    /** Replaces the client's transport with one that records frames and hands them to the peer. */
+    private static void injectTransport(ChatClient client, List<Message> wire, ChatClient peer)
+            throws Exception {
+        ConnectionManager transport =
+                new ConnectionManager("localhost", 0, "unused", client) {
+                    @Override
+                    public void sendMessage(Message message) {
+                        wire.add(message);
+                        peer.onMessageReceived(message);
+                    }
+
+                    @Override
+                    public void start() {
+                        // No socket: this fixture is the network.
+                    }
+                };
+        Field field = ChatClient.class.getDeclaredField("connectionManager");
+        field.setAccessible(true);
+        field.set(client, transport);
+    }
+
+    private static MessageListener silentListener() {
+        return new MessageListener() {
+            @Override
+            public void onMessageReceived(Message message) {
+                // Ignored.
+            }
+
+            @Override
+            public void onConnectionStateChanged(ConnectionState state) {
+                // Ignored.
+            }
         };
-        aliceClient.addMessageListener(dummyListener);
-        bobClient.addMessageListener(dummyListener);
+    }
+
+    /** Collects what a client actually surfaced to its UI. */
+    private static List<Message> recordDeliveries(ChatClient client) {
+        List<Message> delivered = new ArrayList<>();
+        client.addMessageListener(new MessageListener() {
+            @Override
+            public void onMessageReceived(Message message) {
+                delivered.add(message);
+            }
+
+            @Override
+            public void onConnectionStateChanged(ConnectionState state) {
+                // Ignored.
+            }
+        });
+        return delivered;
     }
 
     @Test
-    public void testHandshakeAndEncryptedMessaging() {
-        aliceClient.startSecureChat(bobIdStr);
-        
-        System.out.println("Before assert, aliceToBob size: " + aliceToBob.size());
-        // Alice should have sent HELLO and KEY_EXCHANGE_INIT
+    public void theHandshakeEstablishesASessionAtBothEnds() {
+        aliceClient.startSecureChat(bobId);
+
         assertEquals(2, aliceToBob.size());
         assertEquals(MessageType.HELLO, aliceToBob.get(0).getType());
         assertEquals(MessageType.KEY_EXCHANGE_INIT, aliceToBob.get(1).getType());
-        
-        // Bob should have replied with KEY_EXCHANGE_REPLY
+
         assertEquals(1, bobToAlice.size());
         assertEquals(MessageType.KEY_EXCHANGE_REPLY, bobToAlice.get(0).getType());
-        
-        // Both sessions should be ESTABLISHED
+
         assertEquals(Session.State.ESTABLISHED, aliceClient.getSession().getState());
-        bobClient.setCurrentPeerId(aliceIdStr);
+        bobClient.setCurrentPeerId(aliceId);
         assertEquals(Session.State.ESTABLISHED, bobClient.getSession().getState());
-        
-        // Now send an encrypted message
-        List<Message> receivedByBob = new ArrayList<>();
-        bobClient.addMessageListener(new MessageListener() {
-            @Override public void onMessageReceived(Message msg) {
-                receivedByBob.add(msg);
-            }
-            @Override public void onConnectionStateChanged(ConnectionState state) {}
-        });
-        
-        aliceClient.sendMessage("Secret message to Bob");
-        
-        // Assert the wire message is ciphertext
-        Message wireMessage = aliceToBob.get(2);
-        assertEquals(MessageType.TEXT_MESSAGE, wireMessage.getType());
-        assertNotEquals("Secret message to Bob", new String(wireMessage.getPayload()));
-        
-        // Assert Bob received the plaintext
-        assertEquals(1, receivedByBob.size());
-        assertEquals("Secret message to Bob", new String(receivedByBob.get(0).getPayload()));
     }
 
     @Test
-    public void testTamperedMessageRejected() throws Exception {
-        aliceClient.startSecureChat(bobIdStr);
-        
-        List<Message> receivedByBob = new ArrayList<>();
-        bobClient.addMessageListener(new MessageListener() {
-            @Override public void onMessageReceived(Message msg) {
-                receivedByBob.add(msg);
+    public void whatLeavesTheClientIsCiphertextAndWhatArrivesIsPlaintext() {
+        aliceClient.startSecureChat(bobId);
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+
+        aliceClient.sendMessage("Secret message to Bob");
+
+        Message onTheWire = aliceToBob.get(2);
+        assertEquals(MessageType.TEXT_MESSAGE, onTheWire.getType());
+        String wireBytes = new String(onTheWire.getPayload(), StandardCharsets.UTF_8);
+        assertNotEquals("Secret message to Bob", wireBytes);
+        assertFalse("plaintext leaked onto the wire", wireBytes.contains("Secret"));
+
+        assertEquals(1, deliveredToBob.size());
+        assertEquals("Secret message to Bob",
+                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+    }
+
+    /** Ten messages, so a session that only encrypts the first one cannot pass. */
+    @Test
+    public void everyMessageInASessionIsEncrypted() {
+        aliceClient.startSecureChat(bobId);
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+
+        for (int i = 0; i < 10; i++) {
+            aliceClient.sendMessage("plaintext number " + i);
+        }
+
+        assertEquals(10, deliveredToBob.size());
+        for (Message frame : aliceToBob) {
+            if (frame.getType() != MessageType.TEXT_MESSAGE) {
+                continue;
             }
-            @Override public void onConnectionStateChanged(ConnectionState state) {}
-        });
-        
-        // Intercept Alice's send
-        ConnectionManager tamperedConn = new ConnectionManager("localhost", 0, aliceIdStr, aliceClient) {
-            @Override public void sendMessage(Message msg) { 
-                if (msg.getType() == MessageType.TEXT_MESSAGE) {
-                    byte[] payload = msg.getPayload();
-                    payload[0] ^= 0x01; // flip a bit
-                    Message tampered = new MessageBuilder()
-                            .setType(msg.getType())
-                            .setSenderId(msg.getSenderId())
-                            .setReceiverId(msg.getReceiverId())
-                            .setPayload(payload)
-                            .setIv(msg.getIv())
-                            .setMessageId(msg.getMessageId())
-                            .setTimestamp(msg.getTimestamp())
-                            .setSignature(msg.getSignature())
-                            .buildUnsigned(); // Keep original signature (which is now invalid, but even if valid, AEAD fails)
-                    bobClient.onMessageReceived(tampered);
-                } else {
-                    bobClient.onMessageReceived(msg);
+            String wireBytes = new String(frame.getPayload(), StandardCharsets.UTF_8);
+            assertFalse("plaintext leaked onto the wire: " + wireBytes,
+                    wireBytes.contains("plaintext number"));
+        }
+        for (int i = 0; i < 10; i++) {
+            assertEquals("plaintext number " + i,
+                    new String(deliveredToBob.get(i).getPayload(), StandardCharsets.UTF_8));
+        }
+    }
+
+    /** The same text twice must not produce the same frame, or the relay can spot repeats. */
+    @Test
+    public void identicalTextProducesDifferentCiphertext() {
+        aliceClient.startSecureChat(bobId);
+
+        aliceClient.sendMessage("the same words");
+        aliceClient.sendMessage("the same words");
+
+        byte[] first = aliceToBob.get(2).getPayload();
+        byte[] second = aliceToBob.get(3).getPayload();
+        assertNotEquals(new String(first, StandardCharsets.UTF_8),
+                new String(second, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void aFrameAlteredInFlightIsDroppedRatherThanRendered() throws Exception {
+        aliceClient.startSecureChat(bobId);
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+
+        // A relay that flips one bit of the ciphertext. The signature is carried over unchanged,
+        // so this fails authentication whichever check fires first.
+        Field field = ChatClient.class.getDeclaredField("connectionManager");
+        field.setAccessible(true);
+        field.set(aliceClient, new ConnectionManager("localhost", 0, "unused", aliceClient) {
+            @Override
+            public void sendMessage(Message message) {
+                if (message.getType() != MessageType.TEXT_MESSAGE) {
+                    bobClient.onMessageReceived(message);
+                    return;
                 }
+                byte[] payload = message.getPayload();
+                payload[0] ^= 0x01;
+                bobClient.onMessageReceived(new MessageBuilder()
+                        .setType(message.getType())
+                        .setSenderId(message.getSenderId())
+                        .setReceiverId(message.getReceiverId())
+                        .setPayload(payload)
+                        .setIv(message.getIv())
+                        .setMessageId(message.getMessageId())
+                        .setTimestamp(message.getTimestamp())
+                        .setSignature(message.getSignature())
+                        .buildUnsigned());
             }
-            @Override public void start() {}
-        };
-        java.lang.reflect.Field cmField = ChatClient.class.getDeclaredField("connectionManager");
-        cmField.setAccessible(true);
-        cmField.set(aliceClient, tamperedConn);
-        
+
+            @Override
+            public void start() {
+                // No socket: this fixture is the network.
+            }
+        });
+
         aliceClient.sendMessage("This should be dropped");
-        
-        // Bob's listener should NOT have received the message
-        assertEquals(0, receivedByBob.size());
+
+        assertTrue("a tampered frame reached the user", deliveredToBob.isEmpty());
     }
 }
