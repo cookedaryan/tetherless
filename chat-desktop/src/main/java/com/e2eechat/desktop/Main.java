@@ -3,6 +3,7 @@ package com.e2eechat.desktop;
 import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.core.keys.JceKeyStoreManager;
 import com.e2eechat.core.session.SessionManager;
+import com.e2eechat.desktop.ui.Theme;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,10 @@ public class Main {
     private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
+        // Before any Swing component exists. The sign-in dialog is built further down this method,
+        // and a look and feel installed after a component is created does not restyle it.
+        Theme.installLookAndFeel();
+
         String configDirPath = System.getProperty("tetherless.config.dir", 
                 new File(System.getProperty("user.home"), ".tetherless").getAbsolutePath());
         if (configDirPath.startsWith("\"") && configDirPath.endsWith("\"")) {

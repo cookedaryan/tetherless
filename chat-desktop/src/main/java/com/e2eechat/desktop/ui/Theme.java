@@ -1,5 +1,9 @@
 package com.e2eechat.desktop.ui;
 
+import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.FlatLaf;
+import com.formdev.flatlaf.FlatLightLaf;
+
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.GraphicsEnvironment;
@@ -7,6 +11,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.prefs.Preferences;
+
+import javax.swing.UIManager;
 
 /**
  * Central palette and typography for the Telegram Desktop look.
@@ -44,6 +50,14 @@ public final class Theme {
         }
         dark = value;
         PREFS.putBoolean(PREF_DARK, value);
+
+        // Order matters. The look and feel and its palette go first, then every open window is
+        // restyled, and only then do the custom-painted components repaint. Firing the listeners
+        // first leaves a frame half in one theme and half in the other.
+        installLookAndFeel();
+        if (UIManager.getLookAndFeel() instanceof FlatLaf) {
+            FlatLaf.updateUI();
+        }
         for (Listener l : new ArrayList<>(LISTENERS)) {
             l.onThemeChanged();
         }
@@ -51,6 +65,57 @@ public final class Theme {
 
     public static void toggle() {
         setDark(!dark);
+    }
+
+    /**
+     * Installs the look and feel matching the current palette, and feeds it that palette.
+     *
+     * <p>FlatLaf has been a declared dependency that nothing installed, so every stock component -
+     * popup menus, scrollbars, tooltips, carets, dialogs - rendered in default Metal regardless of
+     * the toggle. Pushing the palette in as well means a popup opened next to a bubble is the same
+     * dark rather than a neighbouring one.
+     *
+     * <p>Never throws. A look and feel that will not load is not a reason to fail startup: the
+     * custom-painted components still follow the palette and the application stays usable.
+     */
+    public static void installLookAndFeel() {
+        try {
+            UIManager.setLookAndFeel(dark ? new FlatDarkLaf() : new FlatLightLaf());
+        } catch (Exception e) {
+            return;
+        }
+        applyPaletteToUiManager();
+    }
+
+    private static void applyPaletteToUiManager() {
+        UIManager.put("PopupMenu.background", sidebarBg());
+        UIManager.put("MenuItem.background", sidebarBg());
+        UIManager.put("MenuItem.foreground", textPrimary());
+        UIManager.put("MenuItem.selectionBackground", sidebarSelected());
+        UIManager.put("MenuItem.selectionForeground", textPrimary());
+        UIManager.put("CheckBoxMenuItem.background", sidebarBg());
+        UIManager.put("CheckBoxMenuItem.foreground", textPrimary());
+        UIManager.put("Separator.foreground", divider());
+        UIManager.put("ScrollBar.thumb", divider());
+        UIManager.put("ScrollBar.track", sidebarBg());
+        UIManager.put("ToolTip.background", headerBg());
+        UIManager.put("ToolTip.foreground", textPrimary());
+        UIManager.put("TextField.background", inputBg());
+        UIManager.put("TextField.foreground", textPrimary());
+        UIManager.put("TextField.caretForeground", textPrimary());
+        UIManager.put("TextField.selectionBackground", accent());
+        UIManager.put("TextArea.background", inputBg());
+        UIManager.put("TextArea.foreground", textPrimary());
+        UIManager.put("TextArea.caretForeground", textPrimary());
+        UIManager.put("TextArea.selectionBackground", accent());
+        UIManager.put("PasswordField.background", inputBg());
+        UIManager.put("PasswordField.foreground", textPrimary());
+        UIManager.put("PasswordField.caretForeground", textPrimary());
+        UIManager.put("Panel.background", sidebarBg());
+        UIManager.put("OptionPane.background", sidebarBg());
+        UIManager.put("OptionPane.messageForeground", textPrimary());
+        UIManager.put("Component.focusColor", accent());
+        UIManager.put("Component.borderColor", divider());
     }
 
     public static void addListener(Listener l) {
