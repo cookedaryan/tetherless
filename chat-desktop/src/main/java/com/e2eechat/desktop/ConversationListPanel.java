@@ -406,6 +406,9 @@ public class ConversationListPanel extends JLayeredPane {
         Conversation updated = new Conversation(peerId, preview, timestamp, fromSelf,
                 ChatMessage.Status.SENT, unread);
         updated.setDisplayName(client.displayNameFor(peerId));
+        // The peer directory is the source of truth for verification status; re-derive it rather
+        // than copying from the previous row, since this method builds a fresh Conversation.
+        updated.setVerified(client.getPeerDirectory().isVerified(peerId));
         if (existing != null) {
             allConversations.remove(existing);
         }
