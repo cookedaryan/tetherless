@@ -72,7 +72,15 @@ subprojects { project ->
             // A real enum instance, not the string 'high': Gradle 10 removes String-to-enum
             // coercion for rich properties. valueOf() is used because Groovy resolves the bare
             // `Confidence.HIGH` here as a nested class rather than the constant.
-            reportLevel = com.github.spotbugs.snom.Confidence.valueOf('HIGH')
+            // High confidence on every build: a security detector that cries wolf gets ignored,
+            // and a failing build has to mean something. `-PspotbugsAll` lowers the threshold to
+            // review what sits below it, which REL-01 does deliberately rather than never looking.
+            reportLevel = project.hasProperty('spotbugsAll')
+                    ? com.github.spotbugs.snom.Confidence.valueOf('LOW')
+                    : com.github.spotbugs.snom.Confidence.valueOf('HIGH')
+            if (project.hasProperty('spotbugsAll')) {
+                ignoreFailures = true
+            }
             excludeFilter = rootProject.file('config/spotbugs/exclude.xml')
         }
         // Without an explicit report, a failing analysis gives nothing but an exit code, which

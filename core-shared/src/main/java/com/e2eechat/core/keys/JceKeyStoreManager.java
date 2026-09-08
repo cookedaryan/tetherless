@@ -1,10 +1,15 @@
 package com.e2eechat.core.keys;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
@@ -16,6 +21,19 @@ import java.util.Optional;
 import java.util.Properties;
 
 public class JceKeyStoreManager implements IdentityKeyStore {
+
+    private static final Logger LOG = LoggerFactory.getLogger(JceKeyStoreManager.class);
+
+    /** Keystore holding this device's long-term identity key. */
+    private static final String KEYSTORE_FILE = "identity.p12";
+
+    /** Entry alias. Unchanged from the keytool-generated format, so old keystores still open. */
+    private static final String ALIAS = "myidentity";
+
+    /** Subject of the container certificate. Carries no meaning; identity is the key's hash. */
+    private static final String CERTIFICATE_NAME = "Tetherless Identity";
+
+    private static final int IDENTITY_KEY_BITS = 2048;
     
     private final File configDir;
     private final File peersFile;
@@ -30,51 +48,64 @@ public class JceKeyStoreManager implements IdentityKeyStore {
             try (FileInputStream fis = new FileInputStream(peersFile)) {
                 peerProperties.load(fis);
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.warn("Could not read the stored peer keys at {}; starting with none",
+                        peersFile.getAbsolutePath(), e);
             }
         }
     }
     
     @Override
     public KeyPair loadOrCreateIdentity(char[] passphrase) throws Exception {
-        File ksFile = new File(configDir, "identity.p12");
+        File ksFile = new File(configDir, KEYSTORE_FILE);
         if (!ksFile.exists()) {
-            // Generate using keytool via ProcessBuilder
-            String pass = new String(passphrase);
-            ProcessBuilder pb = new ProcessBuilder(
-                "keytool", "-genkeypair",
-                "-alias", "myidentity",
-                "-keyalg", "RSA",
-                "-keysize", "2048",
-                "-validity", "3650",
-                "-storetype", "PKCS12",
-                "-keystore", ksFile.getAbsolutePath(),
-                "-storepass", pass,
-                "-keypass", pass,
-                "-dname", "CN=TetherlessUser, O=Tetherless, C=US"
-            );
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            int exitCode = p.waitFor();
-            if (exitCode != 0) {
-                java.util.Scanner s = new java.util.Scanner(p.getInputStream()).useDelimiter("\\A");
-                String result = s.hasNext() ? s.next() : "";
-                throw new Exception("Keytool failed with code " + exitCode + ": " + result);
-            }
+            createIdentity(ksFile, passphrase);
         }
-        
+
         KeyStore ks = KeyStore.getInstance("PKCS12");
         try (FileInputStream fis = new FileInputStream(ksFile)) {
             ks.load(fis, passphrase);
         }
-        
-        PrivateKey privKey = (PrivateKey) ks.getKey("myidentity", passphrase);
-        Certificate cert = ks.getCertificate("myidentity");
+
+        PrivateKey privKey = (PrivateKey) ks.getKey(ALIAS, passphrase);
+        Certificate cert = ks.getCertificate(ALIAS);
         PublicKey pubKey = cert.getPublicKey();
-        
+
         return new KeyPair(pubKey, privKey);
     }
-    
+
+    /**
+     * Generates a fresh identity key and writes the keystore holding it.
+     *
+     * <p>Done in this process. It used to be done by running {@code keytool}, which was wrong
+     * twice over: the passphrase was passed as a command-line argument, where any process running
+     * as the same user can read it out of the process list, and {@code keytool} is a JDK tool the
+     * packaged client does not ship - the app image contains one executable, and it is the client.
+     * A user who installed a build rather than running from a checkout would have had their first
+     * launch fail with nothing on screen to explain it.
+     *
+     * <p>The keystore format is unchanged, so an identity created by the old path still opens.
+     */
+    private void createIdentity(File ksFile, char[] passphrase) throws Exception {
+        File parent = ksFile.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+            throw new IOException("Could not create the configuration directory at " + parent);
+        }
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(IDENTITY_KEY_BITS);
+        KeyPair identity = generator.generateKeyPair();
+
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(null, passphrase);
+        ks.setKeyEntry(ALIAS, identity.getPrivate(), passphrase,
+                new Certificate[]{SelfSignedCertificate.generate(identity, CERTIFICATE_NAME)});
+
+        try (FileOutputStream out = new FileOutputStream(ksFile)) {
+            ks.store(out, passphrase);
+        }
+        LOG.info("Created a new identity key at {}", ksFile.getAbsolutePath());
+    }
+
     @Override
     public synchronized void storePeerKey(String peerId, PublicKey key) throws Exception {
         String b64 = Base64.getEncoder().encodeToString(key.getEncoded());

@@ -86,7 +86,13 @@ Each threat lists the control and the test that exercises it.
 Message bodies are AES-256-GCM ciphertext under a key the relay never sees. Reply metadata travels
 inside the ciphertext rather than in header fields, so the relay cannot even see who is quoting whom.
 
-Tested: `AdversarialRelayTest.plaintextNeverAppearsInInterceptedTraffic`.
+Tested: `AdversarialRelayTest.plaintextNeverAppearsInInterceptedTraffic`, and end to end by
+`EndToEndExchangeTest`, which runs two hundred messages between two clients through the real relay
+while a tap between them records every frame, then asserts that no message body appears anywhere in
+what the relay routed. The tap terminates TLS itself rather than reading from inside the server, so
+what it sees is what an operator sees. It first asserts that the display names, which *are* in the
+clear, can be found in the same captured bytes — otherwise a tap that had quietly stopped recording
+would make the whole check pass on an empty haystack.
 
 ### T2 — Active relay operator (machine-in-the-middle)
 
@@ -137,6 +143,16 @@ Tested: the codec fuzz tests, plus `ProtocolVectorsTest` for exact field round-t
 Partially addressed, and still the weakest area. Both clients now encrypt their message database,
 and identity keys are non-exportable on Android, so the files alone are not enough. But neither
 client protects a live compromised process, and neither offers post-compromise recovery.
+
+One concrete leak here has been closed. The desktop client used to generate its identity key by
+running `keytool` in a subprocess, passing the user's passphrase as a command-line argument — where
+any other process running as the same user could read it out of the process list for as long as
+generation took. Since that passphrase also derives the message database key, it was the single
+most valuable secret the client holds, briefly published to the machine. Keys are now generated in
+process; nothing is spawned and no secret reaches an argument list.
+
+Tested: `JceKeyStoreManagerTest`, including that a keystore written by the old `keytool` path still
+opens, so closing the leak did not strand anyone's existing identity.
 
 ---
 
@@ -189,6 +205,18 @@ entirely on the passphrase**: no iteration count rescues a guessable one.
 
 The salt and iteration count are stored in `profile.properties`, so the count can be raised later
 for new profiles without making existing databases unreadable.
+
+### A client cannot tell when the relay has registered it
+
+The relay sends nothing back when a client's opening `HELLO` registers it. A client therefore knows
+when its socket is up but not when it has become routable, and a handshake aimed at a peer who
+connected a moment earlier can arrive first and be answered `RECIPIENT_OFFLINE`. Nothing is lost or
+exposed — the attempt fails as a unit and leaves nothing in flight — but the chat simply does not
+open, and only trying again fixes it.
+
+This is a protocol gap, not a client bug, and closing it means adding an acknowledgement frame and
+bumping `protocolVersion`. Found while building the end-to-end harness, which had to order its
+connections around it.
 
 ### Session expiry is not implemented
 
@@ -259,17 +287,47 @@ which is a real limitation regardless of how thorough they are.
 
 ## 7. Key storage
 
-- **Desktop:** identity in a PKCS#12 keystore, unlocked by a passphrase. The keystore file is
-  protected by the JCE provider's own password-based encryption at its default parameters; the
-  project does not configure an iteration count of its own.
+- **Desktop:** identity in a PKCS#12 keystore, unlocked by a passphrase, generated in process
+  (see `SelfSignedCertificate` for why the container certificate is hand-encoded). The keystore
+  file is protected by the JCE provider's own password-based encryption at its default parameters;
+  the project does not configure an iteration count of its own.
 - **Android:** identity generated in `AndroidKeyStore`, hardware-backed where available. The private
   key is **non-exportable**, so it cannot be extracted — and equally cannot be backed up.
   Uninstalling the app destroys the identity permanently, and every contact will see a key change.
-- **Session keys:** memory only, never written to disk, discarded on restart.
+- **Session keys:** memory only, never written to disk, discarded on restart. They are held as
+  `SecretKeySpec`, which the JDK does not let you zero, so a session key stays in the heap until
+  garbage collection reclaims it. Passphrases *are* zeroed once the keys they derive exist. No
+  heap-dump analysis has been performed to confirm how long key material actually survives; that
+  remains unverified rather than known-good.
 
 ---
 
-## 8. Reporting a vulnerability
+## 8. Static analysis
+
+SpotBugs with the `find-sec-bugs` plugin runs on every build of every JVM module, at high
+confidence, and a finding fails the build. **There are zero unresolved findings at that level.**
+Three suppressions exist, each scoped to a single pattern or method and each carrying its reason in
+`config/spotbugs/exclude.xml`; there is no blanket exclusion, because on a security detector a
+pattern-wide suppression silently covers code nobody has looked at yet.
+
+High confidence is the threshold for failing a build, not the limit of what gets looked at.
+`./gradlew check -PspotbugsAll` lowers it and reports everything, which as of this review is 174
+further findings. They were triaged rather than filed away:
+
+- The bulk — log injection via peer-controlled ids, and broad `catch (Exception)` — are on paths
+  where the id has already been validated as 32 hex characters or replaced by `Redact.id`, so there
+  is no separator a peer could smuggle into a log line.
+- The path-traversal reports are all on deployment configuration — a keystore path an operator
+  sets — not on anything a peer or a user supplies.
+- `PREDICTABLE_RANDOM` is on the reconnect backoff jitter, which is a politeness measure towards the
+  relay and carries no security weight. Every value that does is drawn from `SecureRandom`.
+
+Nothing in the below-threshold set was assessed as exploitable. The list is recorded here rather
+than silently cleared so the next reviewer can disagree with a specific judgement.
+
+---
+
+## 9. Reporting a vulnerability
 
 Please report privately rather than opening a public issue, and allow time for a fix before
 disclosure. Include what you did, what happened, and what you expected. Findings that come with a
@@ -279,7 +337,7 @@ Contact: the repository owner via GitHub.
 
 ---
 
-## 9. History
+## 10. History
 
 Real issues found and fixed during development, recorded because a security document that lists only
 successes is not informative:
@@ -310,3 +368,9 @@ successes is not informative:
   `AndroidKeyStore`; existing history is migrated across on first launch.
 - **Nothing bound a peer id to its key**, so on first contact a peer could claim someone else's
   address and have their own key trusted against it. Now checked on every `HELLO`.
+- **Identity keys were generated by shelling out to `keytool` with the passphrase on the command
+  line**, publishing the user's most valuable secret to the process list of the machine. The same
+  code also made a packaged client unusable: the jpackage app image ships one executable, and it is
+  not `keytool`, so a user who installed a build rather than running from a checkout would have had
+  their first launch fail with nothing on screen to explain it. Found by looking inside the built
+  app image rather than trusting that a JDK tool would be there. Keys are now generated in process.
