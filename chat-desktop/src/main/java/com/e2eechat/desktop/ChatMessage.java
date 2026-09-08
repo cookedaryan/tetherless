@@ -9,10 +9,15 @@ package com.e2eechat.desktop;
  */
 public class ChatMessage {
 
-    /** Delivery progress, mirrored by the tick glyph in the corner of an outgoing bubble. */
+    /**
+     * Delivery progress, mirrored by the tick glyph in the corner of an outgoing bubble.
+     *
+     * <p>There is deliberately no "sending" state. It would mean "queued locally, the relay has
+     * not seen it", and this protocol has no such moment: handing a frame to the transport is
+     * immediate, and the only later confirmation is DELIVERY_ACK, which comes from the peer rather
+     * than the relay. It becomes meaningful the day an offline send queue exists.
+     */
     public enum Status {
-        /** Queued locally; the relay has not seen it. Rendered as a clock. */
-        SENDING,
         /** Handed to the relay. Rendered as a single tick. */
         SENT,
         /** The peer's client acknowledged receipt. Rendered as a double tick. */

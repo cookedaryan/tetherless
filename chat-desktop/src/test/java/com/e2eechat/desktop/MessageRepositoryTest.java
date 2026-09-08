@@ -227,11 +227,38 @@ public class MessageRepositoryTest {
 
     // ------------------------------------------------------------ delivery state
 
+    /**
+     * Rows written before SENDING was removed must still open.
+     *
+     * <p>readRow already catches IllegalArgumentException from Status.valueOf and falls back to
+     * SENT. This pins that behaviour against the constant that no longer exists, because the
+     * fallback is the only reason removing it is safe.
+     */
+    @Test
+    public void aRowStoredWithARetiredStatusStillReads() throws Exception {
+        try (PreparedStatement pstmt = keepAlive.prepareStatement(
+                "INSERT INTO messages (message_id, sender, receiver, content, timestamp, status) "
+                        + "VALUES (?, ?, ?, ?, ?, ?)")) {
+            pstmt.setString(1, "legacy-1");
+            pstmt.setString(2, ALICE);
+            pstmt.setString(3, BOB);
+            pstmt.setString(4, "written when SENDING existed");
+            pstmt.setLong(5, 1L);
+            pstmt.setString(6, "SENDING");
+            pstmt.executeUpdate();
+        }
+
+        List<ChatMessage> messages = repository.getMessages(ALICE, BOB, 10);
+
+        assertEquals(1, messages.size());
+        assertEquals(ChatMessage.Status.SENT, messages.get(0).getStatus());
+    }
+
     @Test
     public void statusAdvancesForTheNamedMessage() {
         String messageId = UUID.randomUUID().toString();
         repository.saveMessage(messageId, ALICE, BOB, "in flight", 1,
-                ChatMessage.Status.SENDING, null, null, null, true);
+                ChatMessage.Status.SENT, null, null, null, true);
 
         repository.updateStatus(messageId, ChatMessage.Status.DELIVERED);
 
