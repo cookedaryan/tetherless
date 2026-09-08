@@ -122,10 +122,12 @@ loss.
 - Both sides show the messages in the order sent.
 - Outgoing messages show a tick, then a second tick when the peer's client acknowledges.
 - The unread badge on the sidebar clears when the conversation is opened.
-- Alice's safety number for Bob matches Bob's safety number for Alice. Open it from the shield
-  button in the chat header, or the chat menu → **Safety number…**, on both sides. They must be
-  **identical**; if they differ, stop — that is the signature of a machine-in-the-middle and is a
-  release blocker.
+- Alice's safety number for Bob matches Bob's safety number for Alice. Open the shield button in
+  the chat header — or the chat menu → **Safety number…** — to open **Chat info**, which shows
+  both sides' safety numbers as grouped digits, on both sides. They must be **identical**; if they
+  differ, stop — that is the signature of a machine-in-the-middle and is a release blocker.
+- In Chat info, toggle **Verified** on for Alice's view of Bob. A shield appears next to Bob's
+  name in Alice's sidebar row for the conversation.
 
 ## 5 — Reconnect
 
@@ -234,6 +236,29 @@ must never delay startup or produce an error.
 session open until a timeout. A client that leaves without saying so keeps the relay routing to
 somewhere nobody is listening.
 
+## 11 — Panels and theme
+
+*Settings and Chat info used to be a dialog and a JOptionPane. Now they are sliding panels, and
+FlatLaf drives the look and feel — check both.*
+
+1. With a conversation open, open **Settings** from the sidebar's Menu.
+2. Without closing it, try to open **Chat info** from the shield button in the chat header.
+3. Close whichever panel is open, then open **Chat info** from the header.
+4. Press **Escape**.
+5. Open **Chat info** again, then click the dimmed area outside the panel.
+6. Open the sidebar's Menu and toggle **Night mode**. With it open, look at the menu itself, hover
+   a button that shows a tooltip, and look at a scrollbar (the conversation list, or Chat info's
+   body once there is enough content to scroll).
+
+**Expect:**
+- Only one panel is open at a time — opening the second one while the first is still open does not
+  leave both on screen at once.
+- Escape closes the open panel.
+- Clicking the dimmed area outside the panel closes it.
+- Night mode changes the popup menu, the tooltip and the scrollbar along with the rest of the
+  window. Those three stayed light before FlatLaf was wired in; if any of them does not follow the
+  toggle, that is a regression.
+
 ---
 
 ## Result
@@ -250,6 +275,7 @@ somewhere nobody is listening.
 | 8 | Clock skew | | |
 | 9 | Update notice | | |
 | 10 | Closing down | | |
+| 11 | Panels and theme | | |
 
 Tested by: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; Version / commit: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; Date:
 
