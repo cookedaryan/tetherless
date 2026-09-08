@@ -3,9 +3,7 @@ package com.e2eechat.desktop;
 import com.e2eechat.core.build.BuildInfo;
 import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.core.network.TlsSupport;
-import com.e2eechat.desktop.ui.AlphaPanel;
 import com.e2eechat.desktop.ui.Avatars;
-import com.e2eechat.desktop.ui.IconButton;
 import com.e2eechat.desktop.ui.Motion;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
@@ -17,11 +15,8 @@ import javax.swing.BoxLayout;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
-import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
-import javax.swing.JRootPane;
 import javax.swing.JScrollPane;
-import javax.swing.KeyStroke;
 import javax.swing.ScrollPaneConstants;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -30,12 +25,8 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.datatransfer.StringSelection;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
-import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.function.Consumer;
@@ -53,143 +44,18 @@ import java.util.function.Consumer;
  * <p>A sheet over the window rather than a separate window: settings are a mode of the app, not a
  * second application, and a modal dialog would block the chat behind it from updating.
  */
-public class SettingsPanel extends AlphaPanel {
-
-    private static final int WIDTH = 420;
+public class SettingsPanel extends JPanel {
 
     private final ChatClient client;
     private final Runnable onClose;
 
-    private SettingsPanel(ChatClient client, Runnable onClose) {
+    public SettingsPanel(ChatClient client, Runnable onClose) {
         this.client = client;
         this.onClose = onClose;
 
         setLayout(new BorderLayout());
-        setOpaque(true);
-        setBackground(Theme.sidebarBg());
-        // A hairline against the dimmed content, so the sheet has an edge rather than bleeding
-        // into the scrim.
-        setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.divider()));
-
-        add(buildHeader(), BorderLayout.NORTH);
+        setOpaque(false);
         add(buildBody(), BorderLayout.CENTER);
-    }
-
-    // ------------------------------------------------------------ presentation
-
-    /**
-     * Slides the sheet in over {@code frame}, dimming what is behind it.
-     *
-     * <p>Added to the layered pane rather than the content pane so nothing about the existing
-     * split-pane layout has to change to accommodate it, and so it can be removed cleanly.
-     */
-    public static void present(java.awt.Frame frame, ChatClient client) {
-        if (!(frame instanceof javax.swing.RootPaneContainer)) {
-            return;
-        }
-        JRootPane rootPane = ((javax.swing.RootPaneContainer) frame).getRootPane();
-        JLayeredPane layers = rootPane.getLayeredPane();
-
-        Scrim scrim = new Scrim();
-        final SettingsPanel[] sheet = new SettingsPanel[1];
-
-        Runnable dismiss = () -> {
-            SettingsPanel panel = sheet[0];
-            Motion.animate(Motion.NORMAL, Motion.Easing.EASE_OUT, progress -> {
-                float slide = 1f - progress;
-                panel.setLocation(Math.round(-WIDTH * (1f - slide)), 0);
-                scrim.setStrength(slide);
-            }, () -> {
-                layers.remove(panel);
-                layers.remove(scrim);
-                layers.repaint();
-            });
-        };
-
-        sheet[0] = new SettingsPanel(client, dismiss);
-        scrim.onClick(dismiss);
-
-        Rectangle bounds = layers.getBounds();
-        scrim.setBounds(0, 0, bounds.width, bounds.height);
-        sheet[0].setBounds(-WIDTH, 0, WIDTH, bounds.height);
-
-        layers.add(scrim, JLayeredPane.MODAL_LAYER);
-        layers.add(sheet[0], JLayeredPane.MODAL_LAYER);
-
-        // Keep it filling the height if the window is resized while it is open.
-        layers.addComponentListener(new ComponentAdapter() {
-            @Override
-            public void componentResized(ComponentEvent e) {
-                if (sheet[0].getParent() == layers) {
-                    scrim.setBounds(0, 0, layers.getWidth(), layers.getHeight());
-                    sheet[0].setBounds(sheet[0].getX(), 0, WIDTH, layers.getHeight());
-                }
-            }
-        });
-
-        sheet[0].getInputMap(WHEN_IN_FOCUSED_WINDOW)
-                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "close-settings");
-        sheet[0].getActionMap().put("close-settings", new javax.swing.AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                dismiss.run();
-            }
-        });
-
-        Motion.animate(Motion.SLOW, Motion.Easing.EASE_OUT_QUART, progress -> {
-            sheet[0].setLocation(Math.round(-WIDTH * (1f - progress)), 0);
-            scrim.setStrength(progress);
-        }, null);
-    }
-
-    /** The dimmed backdrop. Clicking it closes the sheet, as a sheet should. */
-    private static class Scrim extends JComponent {
-        private float strength;
-
-        Scrim() {
-            setOpaque(false);
-            setCursor(Cursor.getDefaultCursor());
-        }
-
-        void onClick(Runnable action) {
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseReleased(MouseEvent e) {
-                    action.run();
-                }
-            });
-        }
-
-        void setStrength(float value) {
-            strength = value;
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            g.setColor(new Color(0, 0, 0, Math.round(110 * strength)));
-            g.fillRect(0, 0, getWidth(), getHeight());
-        }
-    }
-
-    // ------------------------------------------------------------------ header
-
-    private JComponent buildHeader() {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setOpaque(true);
-        header.setBackground(Theme.headerBg());
-        header.setBorder(BorderFactory.createEmptyBorder(14, 8, 14, 14));
-
-        IconButton back = new IconButton(() -> TgIcons.arrowLeft(20), "Close settings");
-        back.addActionListener(e -> onClose.run());
-        header.add(back, BorderLayout.WEST);
-
-        JLabel title = new JLabel("Settings");
-        title.setFont(Theme.font(Font.BOLD, 17f));
-        title.setForeground(Theme.textPrimary());
-        header.add(title, BorderLayout.CENTER);
-
-        return header;
     }
 
     // -------------------------------------------------------------------- body

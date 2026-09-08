@@ -4,6 +4,7 @@ import com.e2eechat.core.identity.PeerId;
 import com.e2eechat.desktop.ui.Avatars;
 import com.e2eechat.desktop.ui.EmojiText;
 import com.e2eechat.desktop.ui.IconButton;
+import com.e2eechat.desktop.ui.SidePanel;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
 
@@ -267,7 +268,8 @@ public class ConversationListPanel extends JLayeredPane {
     private void openSettings() {
         java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
         if (window instanceof java.awt.Frame) {
-            SettingsPanel.present((java.awt.Frame) window, client);
+            SidePanel.open((java.awt.Frame) window, SidePanel.Side.LEFT, 420, "Settings",
+                panel -> new SettingsPanel(client, panel::dismiss));
         }
     }
 
