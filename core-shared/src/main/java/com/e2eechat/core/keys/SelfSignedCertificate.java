@@ -12,6 +12,7 @@ import java.security.cert.X509Certificate;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.Locale;
 import java.util.TimeZone;
 
 /**
@@ -126,11 +127,18 @@ public final class SelfSignedCertificate {
         return sequence(utcTime(notBefore), utcTime(notAfter));
     }
 
-    /** {@code YYMMDDHHMMSSZ}. Valid until 2049, well past this certificate's ten years. */
+    /**
+     * {@code YYMMDDHHMMSSZ}. Valid until 2049, well past this certificate's ten years.
+     *
+     * <p>Formatted against {@link Locale#ROOT}, not the default locale. Under a locale whose
+     * numbering system is not Latin - Arabic, Bengali and Devanagari among them - {@code %02d}
+     * renders native digits, which would put non-ASCII bytes inside a DER UTCTime and produce a
+     * certificate nothing can parse. The user's locale has no business reaching the wire format.
+     */
     private static byte[] utcTime(Date date) throws IOException {
         Calendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
         calendar.setTime(date);
-        String text = String.format("%02d%02d%02d%02d%02d%02dZ",
+        String text = String.format(Locale.ROOT, "%02d%02d%02d%02d%02d%02dZ",
                 calendar.get(Calendar.YEAR) % 100,
                 calendar.get(Calendar.MONTH) + 1,
                 calendar.get(Calendar.DAY_OF_MONTH),

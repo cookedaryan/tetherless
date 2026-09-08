@@ -9,6 +9,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.cert.X509Certificate;
 import java.util.Date;
+import java.util.Locale;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -105,6 +106,31 @@ public class SelfSignedCertificateTest {
 
         certificate.verify(keyPair.getPublic());
         assertEquals("CN=" + name, certificate.getSubjectX500Principal().getName());
+    }
+
+    /**
+     * A locale whose digits are not Latin must not reach the encoding.
+     *
+     * <p>{@code %02d} renders Arabic-Indic digits under an Arabic locale, which inside a DER
+     * UTCTime produces a certificate nothing can parse - so identity creation would fail outright
+     * for those users, and only for those users.
+     */
+    @Test
+    public void aNonLatinDefaultLocaleDoesNotCorruptTheEncoding() throws Exception {
+        Locale original = Locale.getDefault();
+        try {
+            for (String tag : new String[]{"ar-SA-u-nu-arab", "bn-IN-u-nu-beng"}) {
+                Locale.setDefault(Locale.forLanguageTag(tag));
+
+                X509Certificate certificate =
+                        SelfSignedCertificate.generate(keyPair, "Tetherless Identity");
+
+                certificate.verify(keyPair.getPublic());
+                certificate.checkValidity();
+            }
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
