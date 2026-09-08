@@ -13,9 +13,11 @@ import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConnectionManager {
@@ -39,6 +41,9 @@ public class ConnectionManager {
 
     /** How long {@link #stop()} waits for the writer to stand down before it writes the farewell. */
     private static final long WRITER_SHUTDOWN_MILLIS = 200;
+
+    /** How long the relay is given to acknowledge a registration before the attempt is abandoned. */
+    private static final long REGISTRATION_TIMEOUT_MILLIS = 10000;
     
     protected final String host;
     protected final int port;
@@ -57,6 +62,15 @@ public class ConnectionManager {
     private final AtomicBoolean running = new AtomicBoolean(false);
     
     private ExecutorService reconnectExecutor;
+
+    /**
+     * Released when the relay acknowledges this connection's registration, and also when the
+     * connection ends without one, so a dead socket is not waited out for the full timeout.
+     */
+    private volatile CountDownLatch registered;
+
+    /** True only when an acknowledgement actually arrived, as opposed to the wait being released. */
+    private volatile boolean registrationConfirmed;
 
     public ConnectionManager(String host, int port, String clientId, MessageListener listener) {
         this.host = host;
@@ -112,6 +126,15 @@ public class ConnectionManager {
      */
     protected long backoffDelayMillis(int attempt) {
         return (long) (Math.random() * backoffCeilingMillis(attempt));
+    }
+
+    /**
+     * How long to wait for the relay to acknowledge a registration.
+     *
+     * <p>Overridable so a test need not wait out a real timeout.
+     */
+    protected long registrationTimeoutMillis() {
+        return REGISTRATION_TIMEOUT_MILLIS;
     }
 
     private void connectLoop() {
@@ -172,7 +195,12 @@ public class ConnectionManager {
         
         in = new FrameReader(socket.getInputStream());
         out = new FrameWriter(socket.getOutputStream());
-        
+
+        // Armed before the reader starts, so an acknowledgement cannot arrive with nothing to
+        // record it.
+        registrationConfirmed = false;
+        registered = new CountDownLatch(1);
+
         // Start writer
         writerThread = new Thread(this::writerLoop, "Client-Writer");
         writerThread.setDaemon(true);
@@ -191,6 +219,16 @@ public class ConnectionManager {
                 .setTimestamp(System.currentTimeMillis())
                 .buildUnsigned();
         outboundQueue.offer(hello);
+
+        // The socket being up is not the same as being reachable. Until the relay has registered
+        // this id it will answer anything addressed here with RECIPIENT_OFFLINE, and a client that
+        // called itself connected in that window would send a handshake into the gap and have it
+        // refused. Waiting for the acknowledgement is what makes CONNECTED mean routable.
+        registered.await(registrationTimeoutMillis(), TimeUnit.MILLISECONDS);
+        if (!registrationConfirmed) {
+            closeSocket();
+            throw new IOException("The relay did not acknowledge the registration");
+        }
     }
 
     private void writerLoop() {
@@ -222,6 +260,12 @@ public class ConnectionManager {
                     logger.info("Server requested disconnect.");
                     closeSocket();
                     break;
+                } else if (msg.getType() == MessageType.HELLO_ACK) {
+                    // Between this client and the relay, like PING and DISCONNECT. It says the id
+                    // is registered and the relay will route to it; it is not application traffic
+                    // and never reaches the listener.
+                    registrationConfirmed = true;
+                    releaseRegistrationWait();
                 } else {
                     if (listener != null) {
                         listener.onMessageReceived(msg);
@@ -233,6 +277,19 @@ public class ConnectionManager {
                 logger.warn("Reader error: {}", e.getMessage());
             }
             closeSocket();
+        } finally {
+            // The connection is over. If anything is still waiting to be told this client was
+            // registered, it never will be, and waiting out the full timeout on a socket that is
+            // already gone would only slow the retry down.
+            releaseRegistrationWait();
+        }
+    }
+
+    /** Wakes whatever is waiting on the registration, confirmed or not. */
+    private void releaseRegistrationWait() {
+        CountDownLatch latch = registered;
+        if (latch != null) {
+            latch.countDown();
         }
     }
 

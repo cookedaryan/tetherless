@@ -223,6 +223,18 @@ public class ClientSession implements Runnable {
                         handshakeComplete = true;
                         socket.setSoTimeout(IDLE_TIMEOUT_MS);
                         logger.info("hello: id={}", Redact.id(clientId));
+
+                        // Tell the client it is registered. Without this it knows its socket is up
+                        // but not that anything addressed to it will arrive, so a handshake sent
+                        // in that window is answered RECIPIENT_OFFLINE and fails for no reason the
+                        // user can see.
+                        sendMessage(new MessageBuilder()
+                                .setType(MessageType.HELLO_ACK)
+                                .setSenderId("SERVER")
+                                .setReceiverId(clientId)
+                                .setMessageId(UUID.randomUUID().toString())
+                                .setTimestamp(System.currentTimeMillis())
+                                .buildUnsigned());
                     } else {
                         routeFrame(message.getReceiverId(), frame);
                     }

@@ -58,6 +58,47 @@ public class ChatServerTest {
         alice.close();
     }
 
+    /**
+     * The relay tells a client when it is registered.
+     *
+     * <p>Without this a client knows its socket is up but not that the relay will route to it, so a
+     * handshake aimed at a peer who connected a moment earlier could arrive first and come back
+     * RECIPIENT_OFFLINE. There was no signal to wait on; now there is.
+     */
+    @Test(timeout = 5000)
+    public void testHelloIsAcknowledged() throws Exception {
+        TestClient alice = new TestClient("alice");
+        alice.connect(port);
+
+        alice.sendHello();
+
+        Message ack = alice.awaitMessage(2000);
+        assertNotNull("the relay did not acknowledge the registration", ack);
+        assertEquals(MessageType.HELLO_ACK, ack.getType());
+        alice.close();
+    }
+
+    /** A rejected registration gets the error, and must not also be acknowledged. */
+    @Test(timeout = 5000)
+    public void testDuplicateRegistrationIsNotAcknowledged() throws Exception {
+        TestClient first = new TestClient("alice");
+        first.connect(port);
+        first.sendHello();
+        assertEquals(MessageType.HELLO_ACK, first.awaitMessage(2000).getType());
+
+        TestClient impostor = new TestClient("alice");
+        impostor.connect(port);
+        impostor.sendHello();
+
+        Message answer = impostor.awaitMessage(2000);
+        assertNotNull(answer);
+        assertEquals(MessageType.ERROR, answer.getType());
+        assertEquals("ID_TAKEN", new String(answer.getPayload()));
+
+        first.close();
+        impostor.close();
+    }
+
     @Test(timeout = 5000)
     public void testTwoClientRouting() throws Exception {
         TestClient alice = new TestClient("alice");
@@ -66,10 +107,8 @@ public class ChatServerTest {
         alice.connect(port);
         bob.connect(port);
 
-        alice.sendHello();
-        bob.sendHello();
-
-        Thread.sleep(100);
+        alice.register();
+        bob.register();
 
         alice.sendText("bob", "Hello Bob!");
         
@@ -86,8 +125,7 @@ public class ChatServerTest {
     public void testOfflineRecipient() throws Exception {
         TestClient alice = new TestClient("alice");
         alice.connect(port);
-        alice.sendHello();
-        Thread.sleep(100);
+        alice.register();
 
         alice.sendText("charlie", "Are you there?");
         
@@ -174,9 +212,8 @@ public class ChatServerTest {
     public void testAbruptDisconnect() throws Exception {
         TestClient alice = new TestClient("alice");
         alice.connect(port);
-        alice.sendHello();
-        Thread.sleep(100);
-        
+        alice.register();
+
         // Abruptly close socket client side
         alice.close();
         
@@ -185,9 +222,8 @@ public class ChatServerTest {
         // Bob shouldn't be able to route to Alice
         TestClient bob = new TestClient("bob");
         bob.connect(port);
-        bob.sendHello();
-        Thread.sleep(100);
-        
+        bob.register();
+
         bob.sendText("alice", "U there?");
         
         Message error = bob.awaitMessage(1000);

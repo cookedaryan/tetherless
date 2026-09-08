@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -69,6 +70,15 @@ public class ConnectionManagerTest {
         }
     }
 
+    /** Blocks until the manager reports {@code wanted}, which now includes the relay's answer. */
+    private void awaitState(ConnectionState wanted) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + TIMEOUT_MILLIS;
+        while (!states.contains(wanted) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertTrue("never reported " + wanted + ": " + states, states.contains(wanted));
+    }
+
     /** A manager whose retry delay is zero, so a test never waits out a real backoff. */
     private ConnectionManager immediate() {
         return new ConnectionManager("127.0.0.1", relay.port(), "alice", listener) {
@@ -96,12 +106,73 @@ public class ConnectionManagerTest {
         manager.start();
 
         assertNotNull(relay.awaitFrame(TIMEOUT_MILLIS));
+        awaitState(ConnectionState.CONNECTED);
 
         assertTrue("never reported CONNECTING: " + states,
                 states.contains(ConnectionState.CONNECTING));
-        assertTrue("never reported CONNECTED: " + states,
-                states.contains(ConnectionState.CONNECTED));
         assertEquals(ConnectionState.CONNECTING, states.get(0));
+    }
+
+    /**
+     * Connected has to mean routable.
+     *
+     * <p>It used to mean only that the socket was up and a HELLO had been queued, so a client could
+     * report itself connected before the relay had registered it - and a handshake sent in that
+     * window came back RECIPIENT_OFFLINE. The relay now answers a registration, and this is the
+     * signal being waited on.
+     */
+    @Test
+    public void doesNotReportConnectedUntilTheRelayAcknowledges() throws Exception {
+        relay.acknowledgeHello(false);
+        manager = immediate();
+        manager.start();
+
+        assertNotNull("the HELLO never reached the relay", relay.awaitFrame(TIMEOUT_MILLIS));
+        Thread.sleep(500);
+
+        assertFalse("connected was reported before the relay acknowledged: " + states,
+                states.contains(ConnectionState.CONNECTED));
+    }
+
+    /** A relay that never answers is a failed attempt, so the client keeps trying. */
+    @Test
+    public void retriesWhenTheRelayNeverAcknowledges() throws Exception {
+        relay.acknowledgeHello(false);
+        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", listener) {
+            @Override
+            protected long backoffDelayMillis(int attempt) {
+                return 0;
+            }
+
+            @Override
+            protected long registrationTimeoutMillis() {
+                return 200;
+            }
+        };
+        manager.start();
+
+        long deadline = System.currentTimeMillis() + TIMEOUT_MILLIS;
+        while (relay.connectionCount() < 2 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+
+        assertTrue("the client did not retry a relay that never acknowledged, saw "
+                + relay.connectionCount() + " connections", relay.connectionCount() >= 2);
+        assertFalse(states.contains(ConnectionState.CONNECTED));
+    }
+
+    /** The acknowledgement is between client and relay; it is not application traffic. */
+    @Test
+    public void theAcknowledgementIsNotForwardedToTheListener() throws Exception {
+        manager = immediate();
+        manager.start();
+
+        assertNotNull(relay.awaitFrame(TIMEOUT_MILLIS));
+        Thread.sleep(300);
+
+        assertTrue("the registration acknowledgement was handed to the listener: " + delivered,
+                delivered.isEmpty());
+        assertTrue(states.contains(ConnectionState.CONNECTED));
     }
 
     @Test
@@ -168,6 +239,7 @@ public class ConnectionManagerTest {
         StubRelay.Connection connection = relay.awaitConnection(TIMEOUT_MILLIS);
         assertNotNull(connection);
         assertNotNull(relay.awaitFrame(TIMEOUT_MILLIS));
+        awaitState(ConnectionState.CONNECTED);
 
         connection.send(new MessageBuilder()
                 .setType(MessageType.PING)
@@ -188,6 +260,7 @@ public class ConnectionManagerTest {
         StubRelay.Connection connection = relay.awaitConnection(TIMEOUT_MILLIS);
         assertNotNull(connection);
         assertNotNull(relay.awaitFrame(TIMEOUT_MILLIS));
+        awaitState(ConnectionState.CONNECTED);
 
         connection.send(new MessageBuilder()
                 .setType(MessageType.TEXT_MESSAGE)
@@ -221,6 +294,7 @@ public class ConnectionManagerTest {
         StubRelay.Connection connection = relay.awaitConnection(TIMEOUT_MILLIS);
         assertNotNull(connection);
         assertNotNull(relay.awaitFrame(TIMEOUT_MILLIS));
+        awaitState(ConnectionState.CONNECTED);
 
         connection.send(new MessageBuilder()
                 .setType(MessageType.PING)
@@ -245,6 +319,8 @@ public class ConnectionManagerTest {
         Message hello = relay.awaitFrame(TIMEOUT_MILLIS);
         assertNotNull(hello);
         assertEquals(MessageType.HELLO, hello.getType());
+        // Only a connection the relay has acknowledged is one worth saying goodbye on.
+        awaitState(ConnectionState.CONNECTED);
 
         manager.stop();
 
@@ -258,7 +334,7 @@ public class ConnectionManagerTest {
     public void stopLeavesTheConnectionDisconnected() throws Exception {
         manager = immediate();
         manager.start();
-        assertNotNull(relay.awaitFrame(TIMEOUT_MILLIS));
+        awaitState(ConnectionState.CONNECTED);
 
         manager.stop();
 

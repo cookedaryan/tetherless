@@ -103,6 +103,7 @@ public class ChatServerLifecycleTest {
         FrameWriter w1 = new FrameWriter(s1.getOutputStream());
         FrameReader r1 = new FrameReader(s1.getInputStream());
         w1.writeMessage(createHello("userA"));
+        assertEquals(MessageType.HELLO_ACK, r1.readMessage().getType());
 
         // Try to send to userB (not connected)
         Message msg = new MessageBuilder()
@@ -131,6 +132,7 @@ public class ChatServerLifecycleTest {
         FrameWriter w1 = new FrameWriter(s1.getOutputStream());
         FrameReader r1 = new FrameReader(s1.getInputStream());
         w1.writeMessage(createHello("userA"));
+        assertEquals(MessageType.HELLO_ACK, r1.readMessage().getType());
 
         // Wait a bit, wait, the server ping interval is 30 seconds.
         // We cannot easily test 30-second timeouts in a fast test suite without refactoring the timeout into a variable.

@@ -234,18 +234,6 @@ entirely on the passphrase**: no iteration count rescues a guessable one.
 The salt and iteration count are stored in `profile.properties`, so the count can be raised later
 for new profiles without making existing databases unreadable.
 
-### A client cannot tell when the relay has registered it
-
-The relay sends nothing back when a client's opening `HELLO` registers it. A client therefore knows
-when its socket is up but not when it has become routable, and a handshake aimed at a peer who
-connected a moment earlier can arrive first and be answered `RECIPIENT_OFFLINE`. Nothing is lost or
-exposed — the attempt fails as a unit and leaves nothing in flight — but the chat simply does not
-open, and only trying again fixes it.
-
-This is a protocol gap, not a client bug, and closing it means adding an acknowledgement frame and
-bumping `protocolVersion`. Found while building the end-to-end harness, which had to order its
-connections around it.
-
 ### Session expiry is not implemented
 
 `Session.State.EXPIRED` exists and is never set, and there is no TTL. A key is replaced only when it

@@ -98,23 +98,22 @@ public class EndToEndExchangeTest {
     public void twoClientsExchangeAHundredMessagesEachWayAndTheRelayLearnsNothing() throws Exception {
         // --- connect ------------------------------------------------------
         //
-        // Bob first, and not until his opening HELLO has reached the relay does Alice connect at
-        // all. The relay acknowledges nothing after that HELLO, so there is no signal a client can
-        // wait on to know it has become routable; connecting the two together leaves a real window
-        // in which Alice's handshake arrives before Bob is registered and is answered with
-        // RECIPIENT_OFFLINE. Ordering it this way closes the window rather than sleeping through
-        // it: Bob is registered before Alice opens a socket, and Alice's own registration travels
-        // ahead of her handshake on the same ordered connection.
-        bob.connect("127.0.0.1", tap.port());
-        bob.awaitConnected(CONNECT_TIMEOUT_MILLIS);
-        awaitFramesAtRelay(MessageType.HELLO, 1, CONNECT_TIMEOUT_MILLIS);
-
+        // Both at once, and the handshake straight afterwards. That used to be a race: connected
+        // meant only that the socket was up, so Alice's handshake could reach the relay before it
+        // had registered Bob and come back RECIPIENT_OFFLINE. The relay now acknowledges a
+        // registration and awaitConnected waits for it, so connected means routable and no
+        // ordering or retrying is needed here. If that ever regresses, this test is where it
+        // shows.
         alice.connect("127.0.0.1", tap.port());
+        bob.connect("127.0.0.1", tap.port());
         alice.awaitConnected(CONNECT_TIMEOUT_MILLIS);
+        bob.awaitConnected(CONNECT_TIMEOUT_MILLIS);
 
         // --- handshake ----------------------------------------------------
+        alice.startSecureChat(bob.id());
         try {
-            alice.establishSessionWith(bob.id(), HANDSHAKE_TIMEOUT_MILLIS);
+            // One attempt. Retrying here would paper over exactly the race this is meant to catch.
+            alice.awaitSession(bob.id(), HANDSHAKE_TIMEOUT_MILLIS);
             bob.awaitSession(alice.id(), HANDSHAKE_TIMEOUT_MILLIS);
         } catch (IllegalStateException e) {
             throw new AssertionError(e.getMessage() + "; the relay saw " + tapSummary(), e);
@@ -183,17 +182,6 @@ public class EndToEndExchangeTest {
         }
         assertEquals("both clients should have said goodbye to the relay",
                 2, countOf(tap.observed(), MessageType.DISCONNECT));
-    }
-
-    /** Blocks until the relay has been sent at least {@code count} frames of {@code type}. */
-    private void awaitFramesAtRelay(MessageType type, int count, long timeoutMillis)
-            throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMillis;
-        while (countOf(tap.observed(), type) < count && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        assertTrue("the relay never saw " + count + " " + type + " frames; it saw " + tapSummary(),
-                countOf(tap.observed(), type) >= count);
     }
 
     /** What crossed the relay, by frame type, for diagnosing a handshake that did not complete. */

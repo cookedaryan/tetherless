@@ -55,6 +55,22 @@ public class TestClient {
         out.writeMessage(hello);
     }
 
+    /**
+     * Registers with the relay and waits for it to say the id is routable.
+     *
+     * <p>Replaces {@code sendHello()} followed by a hopeful sleep. The relay now acknowledges a
+     * registration, so a test can wait for the thing it actually needs instead of guessing how
+     * long it takes.
+     */
+    public void register() throws Exception {
+        sendHello();
+        Message ack = awaitMessage(5000);
+        if (ack == null || ack.getType() != MessageType.HELLO_ACK) {
+            fail("the relay did not acknowledge the registration for " + clientId
+                    + "; received " + (ack == null ? "nothing" : ack.getType().toString()));
+        }
+    }
+
     public void sendText(String receiverId, String text) throws Exception {
         Message textMsg = new MessageBuilder()
                 .setType(MessageType.TEXT_MESSAGE)

@@ -152,6 +152,38 @@ the signed half is right.
 disclosure but not the packaging failure. Adding Bouncy Castle would have closed both, at the cost
 of a large dependency in a client whose whole security argument benefits from being small.
 
+## ADR-8 — The relay acknowledges a registration, and the version did not move
+
+**Status:** accepted.
+
+The relay answers a client's opening `HELLO` with `HELLO_ACK`, and a client is not connected until
+that arrives.
+
+**Why.** Before it, `CONNECTED` meant only that the socket was up and a `HELLO` had been queued. The
+relay had not necessarily registered the id yet, so anything addressed to that client in the gap
+came back `RECIPIENT_OFFLINE` — and since a handshake is sent as one unit, it failed whole, with
+nothing in flight to retry and nothing on screen to explain it. There was no signal to wait on
+because the relay sent none. Now `CONNECTED` means routable, which is what every caller already
+assumed it meant.
+
+**What it costs.** A round trip before a client considers itself connected, and a compatibility
+requirement that runs one way: a current client will not finish connecting to a relay that does not
+acknowledge. An older client against a current relay is unaffected — it ignores a frame it was not
+expecting.
+
+**Why `protocolVersion` stayed at 2.** No encoded byte changed. `HELLO_ACK` was already ordinal 1
+and simply unused, so the seventeen frozen vectors are untouched and both versions parse each
+other's frames identically. Nothing in the codebase reads `protocolVersion`, so bumping it would
+have rewritten every committed vector to signal something no implementation would act on, and made
+the next real format change harder to see. The rule in [protocol.md](protocol.md) is that a change
+to the *bytes* forces a bump; this was a change to a requirement, and it is recorded here instead.
+
+**How it is known to work.** The end-to-end harness used to connect its two clients in a careful
+order and retry the handshake, because doing it the obvious way failed about one run in four. Both
+workarounds are gone, and it connects both clients at once and handshakes immediately. That is the
+regression test: if the acknowledgement stops meaning what it says, the harness starts failing
+intermittently again.
+
 ---
 
 ## Decisions still open
@@ -162,7 +194,5 @@ Recorded here so they are not mistaken for settled.
   only once it has encrypted its budget of 100,000 messages, which an ordinary conversation will
   never reach. That renewal is a fresh Diffie-Hellman exchange rather than a ratchet, and it is not
   seamless: sending is refused while it is in flight. A ratchet is still the answer.
-- **The relay acknowledges nothing after a client's HELLO**, so a client cannot tell when it has
-  become routable. Fixing it means an acknowledgement frame and a protocol version bump.
 - **Desktop at-rest encryption covers message bodies only.** Participants, timestamps and message
   counts are in the clear in the local database.

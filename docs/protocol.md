@@ -88,24 +88,24 @@ it is to not have it.
 The codec writes the enum **ordinal**, so the order of these constants is part of the wire format.
 New types are appended; nothing is reordered or removed.
 
-| Ordinal | Type | Payload | Signed | Encrypted |
-|---|---|---|---|---|
-| 0 | `HELLO` | identity key and display name (§6) | no | no |
-| 1 | `HELLO_ACK` | — | no | no |
-| 2 | `KEY_EXCHANGE_INIT` | DH public key, X.509 encoded | yes | no |
-| 3 | `KEY_EXCHANGE_REPLY` | DH public key, X.509 encoded | yes | no |
-| 4 | `KEY_EXCHANGE_REJECT` | — | yes | no |
-| 5 | `TEXT_MESSAGE` | message body | yes | **yes** |
-| 6 | `DELIVERY_ACK` | the acknowledged message id | yes | no |
-| 7 | `DISCONNECT` | — | no | no |
-| 8 | `ERROR` | a short reason, such as `RECIPIENT_OFFLINE` | no | no |
-| 9 | `PING` | — | no | no |
-| 10 | `PONG` | — | no | no |
-| 11 | `TYPING` | one byte: `1` composing, `0` stopped | yes | no |
-| 12 | `READ_RECEIPT` | — | yes | no |
+| Ordinal | Type | Payload | Signed | Encrypted | Notes |
+|---|---|---|---|---|---|
+| 0 | `HELLO` | identity key and display name (§6) | no | no | registers with the relay, or introduces a peer |
+| 1 | `HELLO_ACK` | — | no | no | relay to client, confirming the registration |
+| 2 | `KEY_EXCHANGE_INIT` | DH public key, X.509 encoded | yes | no | |
+| 3 | `KEY_EXCHANGE_REPLY` | DH public key, X.509 encoded | yes | no | |
+| 4 | `KEY_EXCHANGE_REJECT` | — | yes | no | |
+| 5 | `TEXT_MESSAGE` | message body | yes | **yes** | |
+| 6 | `DELIVERY_ACK` | the acknowledged message id | yes | no | |
+| 7 | `DISCONNECT` | — | no | no | either direction |
+| 8 | `ERROR` | a short reason, such as `RECIPIENT_OFFLINE` | no | no | from the relay |
+| 9 | `PING` | — | no | no | |
+| 10 | `PONG` | — | no | no | |
+| 11 | `TYPING` | one byte: `1` composing, `0` stopped | yes | no | |
+| 12 | `READ_RECEIPT` | — | yes | no | |
 
-`PING`, `PONG` and `DISCONNECT` are between a client and the relay. Everything else is between
-clients, and the relay only routes it.
+`HELLO_ACK`, `PING`, `PONG` and `DISCONNECT` are between a client and the relay. Everything else is
+between clients, and the relay only routes it.
 
 `TYPING` and `READ_RECEIPT` are signed but not encrypted. They carry no content, and the relay
 already learns who is talking to whom from the routing fields — encrypting them would buy nothing
@@ -166,7 +166,9 @@ identity key. A message from a sender whose key is unknown cannot be verified an
 Alice                          relay                          Bob
   │                              │                              │
   │──HELLO (register) ──────────▶│                              │
+  │◀─HELLO_ACK ──────────────────│                              │
   │                              │◀────────── HELLO (register) ─│
+  │                              │─ HELLO_ACK ─────────────────▶│
   │                              │                              │
   │──HELLO (to Bob) ────────────▶│─────────────────────────────▶│  Bob stores Alice's key
   │                              │                              │
@@ -179,8 +181,14 @@ Alice                          relay                          Bob
   │══ TEXT_MESSAGE (ciphertext) ═╪═════════════════════════════▶│
 ```
 
-A client's **first** `HELLO` has no `receiverId` and registers it with the relay. Any later `HELLO`
-is routed like anything else.
+A client's **first** `HELLO` has no `receiverId` and registers it with the relay, which answers
+`HELLO_ACK`. Any later `HELLO` is routed like anything else.
+
+**A client is not connected until that acknowledgement arrives.** The socket being up says nothing
+about whether the relay will route to this id yet, and a client that reported itself connected any
+earlier could send a handshake into that window and have it refused. A registration that is not
+acknowledged inside ten seconds, or a connection that dies while waiting, is a failed attempt: the
+client closes it and retries under the usual backoff.
 
 A `HELLO` from an unknown peer is answered with one in return, so both sides end up able to verify
 each other's signatures. Without that only the initiator could.
@@ -203,10 +211,17 @@ A renewal is **not** seamless. While it is in flight the session is not establis
 refused, and a message already on the wire under the old key will fail authentication at the far end
 and be dropped. Nothing re-keys on a timer; the budget is the only trigger.
 
-**The relay acknowledges nothing.** A client knows its socket is up but not when the relay has
-finished registering it, so a handshake aimed at a peer who connected a moment earlier can arrive
-first and come back `RECIPIENT_OFFLINE`. Closing that needs an acknowledgement frame and a protocol
-version bump; it has not been done.
+`HELLO_ACK` is unsigned and comes from the relay, so a hostile relay could withhold it or send one
+without registering anything. Neither is a new capability: a relay that wants to stop a client
+working can already refuse to route. The acknowledgement is a liveness signal, not a security one.
+
+**On the protocol version.** This did not need one. `protocolVersion` stayed at 2 because no encoded
+byte changed — `HELLO_ACK` was already ordinal 1 and simply unused, so the frozen vectors are
+untouched and old and new code parse each other's frames identically. What changed is a
+requirement, and it runs one way: a current client will not finish connecting to a relay that does
+not acknowledge, while an older client talking to a current relay merely ignores a frame it was not
+expecting. Nothing in the codebase reads `protocolVersion`, so bumping it would have rewritten
+seventeen committed vectors to communicate nothing to any implementation.
 
 ## 9. Key agreement and encryption
 
@@ -276,6 +291,8 @@ The five-minute tolerance is also what stops ordinary clock drift breaking the a
 
 - Accepts TLS 1.3 only. A plaintext connection is dropped.
 - Requires `HELLO` first. Anything else before it, and the connection is closed.
+- Answers a successful registration with `HELLO_ACK`. A rejected one gets `ERROR` instead, never
+  both.
 - Refuses a duplicate id, answering `ERROR` with `ID_TAKEN`.
 - Routes by `receiverId`, and answers `ERROR` with `RECIPIENT_OFFLINE` when nobody is there.
 - Answers `PING` with `PONG`, and disconnects idle connections.

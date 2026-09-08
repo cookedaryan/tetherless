@@ -1,6 +1,8 @@
 package com.e2eechat.desktop;
 
 import com.e2eechat.core.models.Message;
+import com.e2eechat.core.models.MessageBuilder;
+import com.e2eechat.core.models.MessageType;
 import com.e2eechat.core.protocol.FrameReader;
 import com.e2eechat.core.protocol.FrameWriter;
 import com.e2eechat.core.network.TlsSupport;
@@ -13,6 +15,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.net.InetAddress;
 import java.security.KeyStore;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +53,7 @@ final class StubRelay implements AutoCloseable {
 
     private volatile Connection current;
     private volatile boolean closeImmediately;
+    private volatile boolean acknowledgeHello = true;
     private volatile boolean running = true;
 
     StubRelay() throws Exception {
@@ -102,6 +106,16 @@ final class StubRelay implements AutoCloseable {
      */
     void hangUpOnConnect(boolean enabled) {
         this.closeImmediately = enabled;
+    }
+
+    /**
+     * Stops the relay acknowledging registrations.
+     *
+     * <p>A client must not report itself connected until the relay has said it is registered, so a
+     * relay that never answers should leave it retrying rather than believing it is routable.
+     */
+    void acknowledgeHello(boolean enabled) {
+        this.acknowledgeHello = enabled;
     }
 
     /** Waits for the next client to connect. */
@@ -179,7 +193,17 @@ final class StubRelay implements AutoCloseable {
             Thread reader = new Thread(() -> {
                 try {
                     while (!socket.isClosed()) {
-                        received.offer(in.readMessage());
+                        Message message = in.readMessage();
+                        received.offer(message);
+                        // The real relay answers a registration, and a client waits for that
+                        // before considering itself routable.
+                        if (message.getType() == MessageType.HELLO && acknowledgeHello) {
+                            send(new MessageBuilder()
+                                    .setType(MessageType.HELLO_ACK)
+                                    .setMessageId(UUID.randomUUID().toString())
+                                    .setTimestamp(System.currentTimeMillis())
+                                    .buildUnsigned());
+                        }
                     }
                 } catch (Exception e) {
                     // EOF when the client hangs up, which every teardown produces.

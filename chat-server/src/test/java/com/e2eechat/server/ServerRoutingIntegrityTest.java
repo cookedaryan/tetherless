@@ -14,6 +14,7 @@ import java.net.Socket;
 import java.util.UUID;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class ServerRoutingIntegrityTest {
@@ -58,20 +59,30 @@ public class ServerRoutingIntegrityTest {
         w.writeMessage(hello);
     }
 
+    /**
+     * Registers and waits for the relay to confirm it, rather than sleeping and hoping.
+     *
+     * <p>The relay acknowledges a registration, so a test that needs a peer to be routable can
+     * wait for exactly that.
+     */
+    private void register(FrameWriter w, FrameReader r, String senderId) throws Exception {
+        sendHello(w, senderId);
+        assertEquals(MessageType.HELLO_ACK, r.readMessage().getType());
+    }
+
     @Test(timeout = 10000)
     public void testRoutingVerbatimIntegrity() throws Exception {
         // Alice connects
         Socket aliceSocket = createSocket();
         FrameWriter aliceWriter = new FrameWriter(aliceSocket.getOutputStream());
-        sendHello(aliceWriter, "alice");
+        FrameReader aliceReader = new FrameReader(aliceSocket.getInputStream());
+        register(aliceWriter, aliceReader, "alice");
 
         // Bob connects
         Socket bobSocket = createSocket();
         FrameWriter bobWriter = new FrameWriter(bobSocket.getOutputStream());
         FrameReader bobReader = new FrameReader(bobSocket.getInputStream());
-        sendHello(bobWriter, "bob");
-
-        Thread.sleep(100);
+        register(bobWriter, bobReader, "bob");
 
         // Alice sends a message to Bob
         byte[] payload = "Top secret message".getBytes();

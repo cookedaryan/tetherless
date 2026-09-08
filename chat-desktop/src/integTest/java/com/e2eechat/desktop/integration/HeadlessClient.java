@@ -37,9 +37,6 @@ final class HeadlessClient implements AutoCloseable {
     /** The identity passphrase. This keystore lives in a temporary directory for one test run. */
     private static final char[] PASSPHRASE = "integration-harness".toCharArray();
 
-    /** How long one handshake attempt is given before another is made. */
-    private static final long HANDSHAKE_RETRY_MILLIS = 2000;
-
     private final String clientId;
     private final ChatClient client;
 
@@ -137,37 +134,6 @@ final class HeadlessClient implements AutoCloseable {
                 return;
             }
             Thread.sleep(20);
-        }
-        throw new IllegalStateException(failureDetail(peerId));
-    }
-
-    /**
-     * Runs the handshake with {@code peerId}, retrying until a session stands up.
-     *
-     * <p>The retry is not padding around a flaky test. The relay acknowledges nothing after a
-     * client's opening HELLO, so a client has no way to know when the relay has finished
-     * registering it and it has become routable. A handshake aimed at a peer who connected a
-     * moment ago can therefore arrive first and be answered with RECIPIENT_OFFLINE, and since
-     * HELLO and KEY_EXCHANGE_INIT travel together, the attempt fails as a unit and leaves nothing
-     * in flight. Retrying is exactly what a person does when a chat does not open, and each
-     * attempt is self-contained.
-     */
-    void establishSessionWith(String peerId, long timeoutMillis) throws InterruptedException {
-        talkTo(peerId);
-        long deadline = System.currentTimeMillis() + timeoutMillis;
-        while (System.currentTimeMillis() < deadline) {
-            client.startSecureChat(peerId);
-
-            // Long enough that a reply to this attempt cannot still be in flight when the next
-            // one generates fresh key material.
-            long attemptDeadline =
-                    Math.min(deadline, System.currentTimeMillis() + HANDSHAKE_RETRY_MILLIS);
-            while (System.currentTimeMillis() < attemptDeadline) {
-                if (established()) {
-                    return;
-                }
-                Thread.sleep(20);
-            }
         }
         throw new IllegalStateException(failureDetail(peerId));
     }
