@@ -154,6 +154,19 @@ public class SecureChat {
         transport.send(MessageSigner.sign(init, identityKey.getPrivate()));
     }
 
+    /**
+     * Discards the current key and negotiates another.
+     *
+     * <p>The peer needs no special handling: a {@code KEY_EXCHANGE_INIT} on an established session
+     * is already answered with a fresh exchange, and both sides reset their counters when they
+     * adopt the new key. Messages already in flight under the old key will fail authentication at
+     * the far end and be dropped - a renewal is not seamless, and this is where that shows.
+     */
+    private void renewSession(String peerId) throws Exception {
+        resetSession(peerId);
+        startHandshake(peerId);
+    }
+
     /** Tears down a session so the next {@link #startHandshake} negotiates fresh keys. */
     public void resetSession(String peerId) {
         sessionManager.getSession(peerId).setState(Session.State.IDLE);
@@ -288,6 +301,15 @@ public class SecureChat {
         Session session = sessionManager.getSession(peerId);
         if (session.getState() != Session.State.ESTABLISHED) {
             throw new IllegalStateException("No established session with " + peerId);
+        }
+
+        // A key that has spent its budget is replaced rather than pushed past. Reaching the limit
+        // used to throw and go no further, and since a renewal did not reset the counter either,
+        // the conversation was finished for the life of the process. Renewing here means the
+        // limit costs one message, which the caller is told about, instead of all of them.
+        if (session.isSendBudgetExhausted()) {
+            renewSession(peerId);
+            throw new SessionRenewalRequiredException(peerId);
         }
 
         // The direction bit must differ between the two peers. Both sides share one derived key and

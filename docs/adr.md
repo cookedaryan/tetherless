@@ -158,9 +158,10 @@ of a large dependency in a client whose whole security argument benefits from be
 
 Recorded here so they are not mistaken for settled.
 
-- **No forward secrecy beyond a single handshake, and no re-keying.** A session holds one key for as
-  long as it lasts. There is a hard ceiling at 100,000 sends, at which point sending simply stops
-  working. A ratchet is the answer and has not been built.
+- **No forward secrecy beyond a single handshake, and no re-keying on a timer.** A key is replaced
+  only once it has encrypted its budget of 100,000 messages, which an ordinary conversation will
+  never reach. That renewal is a fresh Diffie-Hellman exchange rather than a ratchet, and it is not
+  seamless: sending is refused while it is in flight. A ratchet is still the answer.
 - **The relay acknowledges nothing after a client's HELLO**, so a client cannot tell when it has
   become routable. Fixing it means an acknowledgement frame and a protocol version bump.
 - **Desktop at-rest encryption covers message bodies only.** Participants, timestamps and message

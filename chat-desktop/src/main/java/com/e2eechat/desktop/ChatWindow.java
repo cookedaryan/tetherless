@@ -196,6 +196,9 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         ChatMessage replyTo = composer.getReplyTarget();
         String messageId = client.sendMessage(text, replyTo);
         if (messageId == null) {
+            // Nothing went out. Put the text back rather than letting it vanish - the header says
+            // why, and the user should not have to retype what they just wrote.
+            composer.restoreDraft(text);
             return;
         }
 

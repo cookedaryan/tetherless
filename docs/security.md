@@ -248,16 +248,21 @@ connections around it.
 
 ### Session expiry is not implemented
 
-`Session.State.EXPIRED` exists and is never set. There is no TTL and nothing that re-keys, so a
-long-lived session keeps one key for as long as it lasts, which compounds the forward-secrecy
-limitation above.
+`Session.State.EXPIRED` exists and is never set, and there is no TTL. A key is replaced only when it
+has encrypted its budget of 100,000 messages, so an ordinary conversation keeps one key for as long
+as the session lasts. That is the limitation: renewal is bounded by volume, not by time, and it is
+not a ratchet.
 
-There *is* a ceiling, and it is not a graceful one: `Session.getNextSendCounter()` throws after
-100,000 sends on a session — "rekey required" — and since nothing re-keys, the sender simply stops
-being able to send to that peer. The caller catches it and returns no message id, so it surfaces as
-messages that quietly do not go rather than as a crash. A human conversation will not reach 100,000
-messages; anything automated could, and would then be stuck until the session was renegotiated by
-hand.
+**This used to be worse, and dishonestly described.** The document claimed there was no
+message-count cap; there was, and hitting it was terminal. The counter threw, the caller logged it
+and returned no message id, the window silently discarded the typed text — and because a renewal did
+not reset the counter either, the peer stayed unreachable for the life of the process. Reaching the
+budget now discards the key and negotiates another, both sides reset their counters with it, and the
+one message that could not go is reported rather than swallowed.
+
+Tested: `SessionSendBudgetTest` and `SessionKeyRenewalTest` cover the budget, the renewal, and the
+counter reset that makes renewal mean anything; `ChatClientTest` covers the client recovering and
+sending again on its own.
 
 ### No multi-device, no groups, no attachments
 

@@ -32,6 +32,8 @@ import java.util.function.Function;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -59,6 +61,9 @@ public class ChatClientTest {
     /** Every frame Bob put on the wire, in order. */
     private final List<Message> bobToAlice = new ArrayList<>();
 
+    /** Text of every message Alice's repository was asked to store. */
+    private final List<String> aliceSaved = new ArrayList<>();
+
     private String aliceId;
     private String bobId;
 
@@ -85,7 +90,7 @@ public class ChatClientTest {
 
         aliceClient = new ChatClient(aliceId, aliceKeys,
                 new SessionManager(aliceId, aliceLookup),
-                discardingRepository(dbKey), keyStore(aliceKeys, bobKeys.getPublic()),
+                recordingRepository(dbKey, aliceSaved), keyStore(aliceKeys, bobKeys.getPublic()),
                 new PeerDirectory(aliceDir), "Alice");
         bobClient = new ChatClient(bobId, bobKeys,
                 new SessionManager(bobId, bobLookup),
@@ -107,6 +112,35 @@ public class ChatClientTest {
                 // Discarded.
             }
         };
+    }
+
+    /** Records what was stored, so a test can tell a message that went from one that did not. */
+    private static MessageRepository recordingRepository(SecretKey dbKey, List<String> saved) {
+        return new MessageRepository(":memory:", dbKey) {
+            @Override
+            public void saveMessage(String sender, String receiver, String content, long timestamp) {
+                saved.add(content);
+            }
+
+            @Override
+            public void saveMessage(String messageId, String sender, String receiver, String content,
+                                    long timestamp, ChatMessage.Status status, String replyToId,
+                                    String replyToSender, String replyToPreview, boolean markRead) {
+                saved.add(content);
+            }
+        };
+    }
+
+    /**
+     * Spends the session's whole send budget. Each call is a counter increment, not a message, so
+     * this costs milliseconds rather than a hundred thousand signatures.
+     */
+    private static void spendSendBudget(ChatClient client, String peerId) {
+        client.setCurrentPeerId(peerId);
+        Session session = client.getSession();
+        for (long i = 0; i < Session.MAX_SENDS_PER_KEY; i++) {
+            session.getNextSendCounter();
+        }
     }
 
     private static IdentityKeyStore keyStore(KeyPair own, PublicKey peer) {
@@ -256,6 +290,82 @@ public class ChatClientTest {
         byte[] second = aliceToBob.get(3).getPayload();
         assertNotEquals(new String(first, StandardCharsets.UTF_8),
                 new String(second, StandardCharsets.UTF_8));
+    }
+
+    /**
+     * A key that has spent its send budget is renewed rather than being the end of the
+     * conversation.
+     *
+     * <p>Reaching the budget used to throw, be logged, and return no message id - and because a
+     * renewal did not reset the counter either, the peer stayed unreachable for the life of the
+     * process. Now the client negotiates a fresh key and tells the window the session is being
+     * re-established, so it recovers on its own.
+     */
+    @Test
+    public void aSpentSendBudgetRenewsTheKeyInsteadOfEndingTheConversation() {
+        aliceClient.startSecureChat(bobId);
+        spendSendBudget(aliceClient, bobId);
+        aliceToBob.clear();
+
+        String messageId = aliceClient.sendMessage("this one does not go", null);
+
+        assertNull("a message was reported sent under a spent key", messageId);
+        for (Message frame : aliceToBob) {
+            assertNotEquals("a text message went out under a spent key",
+                    MessageType.TEXT_MESSAGE, frame.getType());
+        }
+        assertTrue("no handshake was started to renew the key", aliceToBob.size() >= 2);
+        assertEquals(MessageType.HELLO, aliceToBob.get(0).getType());
+        assertEquals(MessageType.KEY_EXCHANGE_INIT, aliceToBob.get(1).getType());
+    }
+
+    /** The renewal completes by itself, and sending works again afterwards. */
+    @Test
+    public void sendingWorksAgainOnceTheRenewalCompletes() {
+        aliceClient.startSecureChat(bobId);
+        spendSendBudget(aliceClient, bobId);
+
+        assertNull(aliceClient.sendMessage("this one does not go", null));
+
+        // The fake transport hands frames straight to Bob, so by now Bob has answered and Alice
+        // has adopted the new key.
+        assertEquals(Session.State.ESTABLISHED, aliceClient.getSession().getState());
+
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+        assertNotNull("sending did not recover after the renewal",
+                aliceClient.sendMessage("this one does", null));
+        assertEquals(1, deliveredToBob.size());
+        assertEquals("this one does",
+                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Nothing is written until the message has actually been encrypted.
+     *
+     * <p>The row used to be saved first, so a send that then failed left history claiming a message
+     * had been sent when nothing ever left the machine.
+     */
+    @Test
+    public void aMessageThatCannotBeEncryptedIsNotRecordedAsSent() {
+        aliceClient.startSecureChat(bobId);
+        spendSendBudget(aliceClient, bobId);
+        aliceSaved.clear();
+
+        assertNull(aliceClient.sendMessage("never encrypted", null));
+
+        assertTrue("a message that never went out was recorded as sent: " + aliceSaved,
+                aliceSaved.isEmpty());
+    }
+
+    @Test
+    public void aMessageThatGoesOutIsRecorded() {
+        aliceClient.startSecureChat(bobId);
+        aliceSaved.clear();
+
+        assertNotNull(aliceClient.sendMessage("this one goes", null));
+
+        assertEquals(1, aliceSaved.size());
+        assertEquals("this one goes", aliceSaved.get(0));
     }
 
     @Test

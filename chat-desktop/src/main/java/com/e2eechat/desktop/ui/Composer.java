@@ -284,6 +284,24 @@ public class Composer extends JPanel {
         repaint();
     }
 
+    /**
+     * Puts a refused message back in the box.
+     *
+     * <p>The composer clears itself as soon as it hands text over, which is right when the message
+     * goes and wrong when it does not: a send that is refused - no session yet, or a key that has
+     * reached its send budget - otherwise takes the words off the screen with nothing to show for
+     * them. Anything the user has typed since wins, because their newer text is the one they are
+     * looking at.
+     */
+    public void restoreDraft(String text) {
+        if (text == null || text.isEmpty() || !input.getText().isEmpty()) {
+            return;
+        }
+        input.setText(text);
+        resizeToContent();
+        focusInput();
+    }
+
     public void focusInput() {
         SwingUtilities.invokeLater(input::requestFocusInWindow);
     }

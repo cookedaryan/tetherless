@@ -189,11 +189,19 @@ Session states are `IDLE → HANDSHAKE_SENT → ESTABLISHED`. `EXPIRED` exists i
 set: there is no re-keying, and no way to trigger one automatically. See the limitations section of
 [security.md](security.md).
 
-There is, however, a hard ceiling. `Session.getNextSendCounter()` throws after **100,000 sends** on
-one session — "Session key exhausted, rekey required" — and since nothing re-keys, the sender simply
-stops being able to send on that session. The caller catches it and returns a null message id, so
-the failure surfaces as messages that do not go, not as a crash. A conversation is unlikely to reach
-it; a machine-driven one would.
+A key does have a **send budget** of 100,000 messages (`Session.MAX_SENDS_PER_KEY`). Reaching it no
+longer ends the conversation: the client discards the key, runs a fresh handshake, and reports the
+one message that could not go so the sender can offer it again. Both sides reset their send counter
+and their replay window when they adopt the new key, because nonce uniqueness is a property of a
+key rather than of a session.
+
+The budget is well below anything AES-GCM requires — the counter is 64-bit and the direction bit
+keeps the peers apart. It is about key lifetime: each renewal is a fresh Diffie–Hellman exchange, so
+bounding how long one key is used bounds how much its compromise reveals.
+
+A renewal is **not** seamless. While it is in flight the session is not established, so sending is
+refused, and a message already on the wire under the old key will fail authentication at the far end
+and be dropped. Nothing re-keys on a timer; the budget is the only trigger.
 
 **The relay acknowledges nothing.** A client knows its socket is up but not when the relay has
 finished registering it, so a handshake aimed at a peer who connected a moment earlier can arrive

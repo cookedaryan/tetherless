@@ -50,7 +50,26 @@ public class Session {
     public synchronized void setState(State state) { this.state = state; }
 
     public synchronized SecretKey getSecretKey() { return secretKey; }
-    public synchronized void setSecretKey(SecretKey secretKey) { this.state = State.ESTABLISHED; this.secretKey = secretKey; }
+
+    /**
+     * Adopts a freshly agreed key and establishes the session.
+     *
+     * <p>Both counter spaces reset with it, because nonce uniqueness is a property of a key rather
+     * than of a session. Carrying either across a renewal breaks something. A send counter that
+     * kept climbing would mean renewing never lifted the send ceiling - which is what made the old
+     * "rekey required" impossible to satisfy. A replay window that kept its floor would reject
+     * every message the peer sent afterwards, since their counter starts again from one.
+     *
+     * <p>Discarding the seen counters is safe: a frame captured under the previous key fails
+     * authentication under this one, so it cannot be replayed back in through the gap.
+     */
+    public synchronized void setSecretKey(SecretKey secretKey) {
+        this.state = State.ESTABLISHED;
+        this.secretKey = secretKey;
+        this.sendCounter = 0;
+        this.highestReceivedCounter = 0;
+        this.receivedCounters.clear();
+    }
 
     public synchronized PublicKey getLocalDhPublicKey() { return localDhPublicKey; }
     public synchronized void setLocalDhPublicKey(PublicKey key) { this.localDhPublicKey = key; }
@@ -58,9 +77,31 @@ public class Session {
     public synchronized PublicKey getRemoteDhPublicKey() { return remoteDhPublicKey; }
     public synchronized void setRemoteDhPublicKey(PublicKey key) { this.remoteDhPublicKey = key; }
 
+    /**
+     * Messages one key may encrypt before the session renews itself.
+     *
+     * <p>Well below anything AES-GCM requires - the counter is 64-bit and the direction bit keeps
+     * the two peers apart, so nonces would not collide for far longer than this. The budget is
+     * about key lifetime rather than nonce space: each renewal is a fresh Diffie-Hellman exchange,
+     * so bounding how long one key is used bounds how much a compromise of it reveals.
+     */
+    public static final long MAX_SENDS_PER_KEY = 100000;
+
+    /**
+     * True once this key has encrypted its whole budget and the session needs a new one.
+     *
+     * <p>Callers check this and renew. {@link #getNextSendCounter()} still refuses to go past the
+     * budget, so a caller that does not check cannot quietly spend more of the key than intended.
+     */
+    public synchronized boolean isSendBudgetExhausted() {
+        return sendCounter >= MAX_SENDS_PER_KEY;
+    }
+
     public synchronized long getNextSendCounter() {
-        if (sendCounter >= 100000) {
-            throw new IllegalStateException("Session key exhausted (max sends reached). Rekey required.");
+        if (sendCounter >= MAX_SENDS_PER_KEY) {
+            throw new IllegalStateException(
+                    "This key has encrypted its budget of " + MAX_SENDS_PER_KEY
+                            + " messages. A new one has to be negotiated before sending again.");
         }
         return ++sendCounter;
     }

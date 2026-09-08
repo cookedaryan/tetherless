@@ -12,6 +12,7 @@ import com.e2eechat.core.network.SessionStateListener;
 import com.e2eechat.core.session.SecureChat;
 import com.e2eechat.core.session.Session;
 import com.e2eechat.core.session.SessionManager;
+import com.e2eechat.core.session.SessionRenewalRequiredException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -345,6 +346,7 @@ public class ChatClient implements MessageListener {
             return null;
         }
 
+        String peerId = currentPeerId;
         try {
             long timestamp = System.currentTimeMillis();
             String messageId = UUID.randomUUID().toString();
@@ -353,13 +355,25 @@ public class ChatClient implements MessageListener {
             String replySender = replyTo == null ? null : replyTo.getSender();
             String replyPreview = replyTo == null ? null : replyTo.getContent();
 
-            messageRepository.saveMessage(messageId, clientId, currentPeerId, text, timestamp,
-                    ChatMessage.Status.SENT, replyId, replySender, replyPreview, true);
-
             byte[] body = Body.encode(text, replyId, replySender, replyPreview)
                     .getBytes(StandardCharsets.UTF_8);
-            transmit(secureChat.encrypt(currentPeerId, messageId, body));
+
+            // Encrypted before it is stored. The row used to be written first, so a send that then
+            // failed left history claiming a message had been sent when nothing ever left the
+            // machine - and the window, seeing no id come back, drew no bubble to contradict it.
+            Message encrypted = secureChat.encrypt(peerId, messageId, body);
+
+            messageRepository.saveMessage(messageId, clientId, peerId, text, timestamp,
+                    ChatMessage.Status.SENT, replyId, replySender, replyPreview, true);
+            transmit(encrypted);
             return messageId;
+        } catch (SessionRenewalRequiredException e) {
+            // Not a failure. The key reached its send budget and a fresh handshake is already on
+            // its way out; the session state carries that to the window, which shows the chat
+            // re-establishing and re-enables itself when the new key lands.
+            logger.info("Renewing the key for {}", PeerId.shortForm(peerId));
+            notifySessionStateChanged(secureChat.stateOf(peerId));
+            return null;
         } catch (Exception e) {
             logger.error("Error creating/sending encrypted message", e);
             return null;
