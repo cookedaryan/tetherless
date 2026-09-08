@@ -11,11 +11,13 @@ import org.junit.Test;
 
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JLayeredPane;
 import java.awt.GraphicsEnvironment;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -70,12 +72,19 @@ public class SidePanelTest {
 
     @Test
     public void dismissingRemovesIt() {
-        SidePanel panel = open(SidePanel.Side.RIGHT);
+        JLayeredPane layers = frame.getRootPane().getLayeredPane();
+        int componentCountBeforeOpen = layers.getComponentCount();
+        int listenerCountBeforeOpen = layers.getComponentListeners().length;
 
+        SidePanel panel = open(SidePanel.Side.RIGHT);
         panel.dismiss();
 
         assertFalse(panel.isOpen());
-        assertNotNull("the frame should survive its panel", frame.getRootPane());
+        assertNull("the panel should be detached from its host", panel.getParent());
+        assertEquals("the scrim should be removed along with the panel",
+                componentCountBeforeOpen, layers.getComponentCount());
+        assertEquals("the resize listener should be removed along with the panel",
+                listenerCountBeforeOpen, layers.getComponentListeners().length);
     }
 
     @Test

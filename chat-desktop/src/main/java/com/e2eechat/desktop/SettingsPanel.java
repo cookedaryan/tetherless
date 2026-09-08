@@ -47,11 +47,9 @@ import java.util.function.Consumer;
 public class SettingsPanel extends JPanel {
 
     private final ChatClient client;
-    private final Runnable onClose;
 
-    public SettingsPanel(ChatClient client, Runnable onClose) {
+    public SettingsPanel(ChatClient client) {
         this.client = client;
-        this.onClose = onClose;
 
         setLayout(new BorderLayout());
         setOpaque(false);

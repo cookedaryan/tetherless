@@ -53,6 +53,8 @@ public final class SidePanel extends JPanel {
 
     private Component focusBeforeOpening;
     private boolean open;
+    private ComponentAdapter resizeListener;
+    private Motion.Handle motionHandle = Motion.Handle.COMPLETED;
 
     private SidePanel(JLayeredPane layers, Side side, int width, String title) {
         this.layers = layers;
@@ -112,7 +114,7 @@ public final class SidePanel extends JPanel {
         layers.add(this, JLayeredPane.MODAL_LAYER);
 
         // Keep it filling the height, and against its edge, if the window is resized while open.
-        layers.addComponentListener(new ComponentAdapter() {
+        resizeListener = new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
                 if (getParent() == layers) {
@@ -120,7 +122,8 @@ public final class SidePanel extends JPanel {
                     setBounds(restingX(layers.getWidth()), 0, width, layers.getHeight());
                 }
             }
-        });
+        };
+        layers.addComponentListener(resizeListener);
 
         getInputMap(WHEN_IN_FOCUSED_WINDOW)
                 .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "close-side-panel");
@@ -131,9 +134,10 @@ public final class SidePanel extends JPanel {
             }
         });
 
+        motionHandle.cancel();
         final int from = offscreenX(bounds.width);
         final int to = restingX(bounds.width);
-        Motion.animate(Motion.SLOW, Motion.Easing.EASE_OUT_QUART, new Motion.Frame() {
+        motionHandle = Motion.animate(Motion.SLOW, Motion.Easing.EASE_OUT_QUART, new Motion.Frame() {
             @Override
             public void at(float progress) {
                 setLocation(Motion.lerp(from, to, progress), 0);
@@ -149,9 +153,10 @@ public final class SidePanel extends JPanel {
         }
         open = false;
 
+        motionHandle.cancel();
         final int from = getX();
         final int to = offscreenX(layers.getWidth());
-        Motion.animate(Motion.NORMAL, Motion.Easing.EASE_OUT, new Motion.Frame() {
+        motionHandle = Motion.animate(Motion.NORMAL, Motion.Easing.EASE_OUT, new Motion.Frame() {
             @Override
             public void at(float progress) {
                 setLocation(Motion.lerp(from, to, progress), 0);
@@ -162,6 +167,7 @@ public final class SidePanel extends JPanel {
             public void run() {
                 layers.remove(SidePanel.this);
                 layers.remove(scrim);
+                layers.removeComponentListener(resizeListener);
                 layers.repaint();
                 if (focusBeforeOpening != null) {
                     focusBeforeOpening.requestFocusInWindow();
