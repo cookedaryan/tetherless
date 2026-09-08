@@ -466,7 +466,7 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         }
         openPanel(SidePanel.Side.RIGHT, "Chat info",
             panel -> new ChatInfoPanel(client, peerId, ownFingerprint, () -> {
-                panel.dismiss();
+                closePanel();
                 showChatSearch();
             }));
     }
