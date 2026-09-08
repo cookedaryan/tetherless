@@ -19,7 +19,6 @@ import javax.swing.BorderFactory;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.SwingUtilities;
@@ -476,31 +475,12 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         if (peerId == null) {
             return;
         }
-        String query = JOptionPane.showInputDialog(this, "Search in this chat:",
-                "Search", JOptionPane.PLAIN_MESSAGE);
-        if (query == null || query.trim().isEmpty()) {
-            return;
-        }
-        List<ChatMessage> hits = client.getMessageRepository()
-                .searchMessages(client.getClientId(), query.trim(), 50);
-        hits.removeIf(m -> !m.getSender().equals(peerId) && !m.getReceiver().equals(peerId));
-
-        if (hits.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No messages found for \"" + query.trim() + "\".",
-                    "Search", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append(hits.size()).append(" match")
-                .append(hits.size() == 1 ? "" : "es").append(":\n\n");
-        for (ChatMessage m : hits) {
-            sb.append(displayNameOf(m.getSender())).append(": ")
-                    .append(m.getContent().length() > 70
-                            ? m.getContent().substring(0, 69) + "…" : m.getContent())
-                    .append('\n');
-        }
-        JOptionPane.showMessageDialog(this, sb.toString(), "Search results",
-                JOptionPane.INFORMATION_MESSAGE);
+        openPanel(SidePanel.Side.RIGHT, "Search",
+            panel -> new SearchPanel(client, peerId, hit -> {
+                if (transcript != null) {
+                    transcript.scrollTo(hit.getMessageId());
+                }
+            }));
     }
 
     private void showChatMenu(java.awt.Component anchor) {

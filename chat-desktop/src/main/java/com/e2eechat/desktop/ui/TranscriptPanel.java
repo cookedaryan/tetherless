@@ -23,6 +23,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
@@ -35,7 +36,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -59,6 +62,8 @@ public class TranscriptPanel extends JLayeredPane {
     private final String localClientId;
 
     private final List<ChatMessage> messages = new ArrayList<>();
+    /** Row component for each message id, so a search hit can be scrolled to. */
+    private final Map<String, Component> rowsById = new HashMap<>();
     private MessageBubble lastBubble;
     private ChatMessage lastMessage;
     private LocalDate lastDate;
@@ -187,6 +192,7 @@ public class TranscriptPanel extends JLayeredPane {
     public void setHistory(List<ChatMessage> history) {
         messages.clear();
         column.removeAll();
+        rowsById.clear();
         lastBubble = null;
         lastMessage = null;
         lastDate = null;
@@ -242,6 +248,9 @@ public class TranscriptPanel extends JLayeredPane {
         messages.add(message);
         lastBubble = bubble;
         lastMessage = message;
+        if (message.getMessageId() != null) {
+            rowsById.put(message.getMessageId(), row);
+        }
         return row;
     }
 
@@ -372,6 +381,26 @@ public class TranscriptPanel extends JLayeredPane {
             bar.setValue(bar.getMaximum());
             SwingUtilities.invokeLater(() -> bar.setValue(bar.getMaximum()));
         });
+    }
+
+    /**
+     * Brings the message with {@code messageId} into view.
+     *
+     * @return false when no row carries that id - messages stored before ids were recorded have
+     *         none, and a caller should say so rather than appear to do nothing
+     */
+    public boolean scrollTo(String messageId) {
+        if (messageId == null) {
+            return false;
+        }
+        Component row = rowsById.get(messageId);
+        if (row == null) {
+            return false;
+        }
+        Rectangle bounds = row.getBounds();
+        column.scrollRectToVisible(new Rectangle(0, Math.max(0, bounds.y - 40),
+                bounds.width, bounds.height + 80));
+        return true;
     }
 
     // -------------------------------------------------------------- sub-views
