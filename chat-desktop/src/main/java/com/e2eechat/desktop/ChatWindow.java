@@ -8,6 +8,7 @@ import com.e2eechat.core.session.Session;
 import com.e2eechat.desktop.ui.Avatars;
 import com.e2eechat.desktop.ui.Composer;
 import com.e2eechat.desktop.ui.IconButton;
+import com.e2eechat.desktop.ui.SidePanel;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
 import com.e2eechat.desktop.ui.TranscriptPanel;
@@ -60,6 +61,9 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
     private TranscriptPanel transcript;
     private JComponent emptyState;
     private final Timer typingExpiry;
+
+    /** The panel currently open over the window, if any. Only one at a time. */
+    private SidePanel openPanel;
 
     public ChatWindow(ChatClient client, String fingerprint) {
         this.client = client;
@@ -367,8 +371,8 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
             actions.setOpaque(false);
             actions.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 2, 12));
 
-            IconButton safety = new IconButton(() -> TgIcons.shield(20), "Safety number");
-            safety.addActionListener(e -> showSafetyNumber());
+            IconButton safety = new IconButton(() -> TgIcons.shield(20), "Chat info");
+            safety.addActionListener(e -> showChatInfo());
 
             IconButton search = new IconButton(() -> TgIcons.search(19), "Search in chat");
             search.addActionListener(e -> showChatSearch());
@@ -443,33 +447,28 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
 
     // ------------------------------------------------------------ header actions
 
-    private void showSafetyNumber() {
+    private void openPanel(SidePanel.Side side, String title, SidePanel.ContentFactory content) {
+        closePanel();
+        openPanel = SidePanel.open(this, side, 380, title, content);
+    }
+
+    private void closePanel() {
+        if (openPanel != null) {
+            openPanel.dismiss();
+            openPanel = null;
+        }
+    }
+
+    private void showChatInfo() {
         String peerId = client.getReceiverId();
         if (peerId == null) {
             return;
         }
-        String peerFp = client.getPeerFingerprint(peerId);
-        String body = "Compare these numbers with " + displayNameOf(peerId)
-                + " over a channel you already trust\n"
-                + "(in person, or a phone call). If they match, nobody is intercepting this chat.\n\n"
-                + "You:  " + group(ownFingerprint) + "\n"
-                + displayNameOf(peerId) + ":  "
-                + (peerFp == null ? "(no key received yet)" : group(peerFp));
-
-        JOptionPane.showMessageDialog(this, body, "Safety number",
-                JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    /** Renders a fingerprint in space-separated blocks, which is far easier to read aloud. */
-    private static String group(String fingerprint) {
-        if (fingerprint == null) {
-            return "(unknown)";
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < fingerprint.length(); i += 4) {
-            sb.append(fingerprint, i, Math.min(i + 4, fingerprint.length())).append(' ');
-        }
-        return sb.toString().trim();
+        openPanel(SidePanel.Side.RIGHT, "Chat info",
+            panel -> new ChatInfoPanel(client, peerId, ownFingerprint, () -> {
+                panel.dismiss();
+                showChatSearch();
+            }));
     }
 
     private void showChatSearch() {
@@ -508,7 +507,7 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
 
         javax.swing.JMenuItem safety = new javax.swing.JMenuItem("Safety number…");
-        safety.addActionListener(e -> showSafetyNumber());
+        safety.addActionListener(e -> showChatInfo());
         menu.add(safety);
 
         javax.swing.JMenuItem search = new javax.swing.JMenuItem("Search in chat…");
