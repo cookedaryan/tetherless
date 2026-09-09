@@ -1,5 +1,9 @@
 .gradle/
 build/
+# ...but not a Java package that happens to be named "build". core-shared has
+# com.e2eechat.core.build, so the line above was quietly excluding BuildInfo.java - hand-written
+# source, not build output - and a clean clone of this repository did not compile without it.
+!**/src/**/build/
 .idea/
 *.iml
 local.properties
