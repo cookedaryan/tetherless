@@ -559,6 +559,38 @@ public class ChatClient implements MessageListener {
             this.replyToPreview = replyToPreview;
         }
 
+        /**
+         * The three characters this format is built out of.
+         *
+         * <p>They are structure, not content, and the format has no way to say "this one is
+         * literal". Nothing removed them from a field before it was written, so a message
+         * containing one and then quoted in a reply moved the boundaries of the frame it was
+         * embedded in: a preview holding {@code BODY_SEP} ended the header early and pushed its
+         * own tail into the message text, and one holding {@code FIELD_SEP} shifted every field
+         * after it along by one.
+         *
+         * <p>They are also all ASCII control characters, so they never belong in a chat message
+         * to begin with, and removing them costs nothing anybody would notice. That is why this
+         * strips rather than escapes: escaping would need both ends to agree on the scheme, and a
+         * peer running an older build would render the escapes.
+         */
+        private static final String STRUCTURAL = "\u0001\u001E\u001F";
+
+        /** Removes the format's own delimiters from one field. Null becomes empty. */
+        private static String strip(String value) {
+            if (value == null || value.isEmpty()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder(value.length());
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (STRUCTURAL.indexOf(c) < 0) {
+                    sb.append(c);
+                }
+            }
+            return sb.toString();
+        }
+
         static Body parse(String raw) {
             if (!raw.startsWith(REPLY_MARKER)) {
                 return new Body(raw, null, null, null);
@@ -574,20 +606,28 @@ public class ChatClient implements MessageListener {
             if (parts.length < 3) {
                 return new Body(text, null, null, null);
             }
+            // Stripped again on the way in. The sender doing it protects an honest peer's
+            // message from being mangled; it does nothing about a peer who simply does not, and
+            // these three fields are rendered.
             return new Body(text,
-                    parts[0].isEmpty() ? null : parts[0],
-                    parts[1].isEmpty() ? null : parts[1],
-                    parts[2].isEmpty() ? null : parts[2]);
+                    parts[0].isEmpty() ? null : strip(parts[0]),
+                    parts[1].isEmpty() ? null : strip(parts[1]),
+                    parts[2].isEmpty() ? null : strip(parts[2]));
         }
 
         static String encode(String text, String replyId, String replySender, String replyPreview) {
+            // The message body is stripped as well, not only the metadata. Without that, a
+            // message whose text merely began with REPLY_MARKER was parsed at the far end as a
+            // reply, and the id, sender and preview it appeared to quote were whatever the text
+            // happened to contain - a quotation of something nobody ever sent.
+            String body = strip(text);
             if (replyId == null) {
-                return text;
+                return body;
             }
-            return REPLY_MARKER + replyId + FIELD_SEP
-                    + (replySender == null ? "" : replySender) + FIELD_SEP
-                    + (replyPreview == null ? "" : replyPreview.replace('\n', ' ')) + BODY_SEP
-                    + text;
+            return REPLY_MARKER + strip(replyId) + FIELD_SEP
+                    + strip(replySender) + FIELD_SEP
+                    + strip(replyPreview).replace('\n', ' ') + BODY_SEP
+                    + body;
         }
     }
 }

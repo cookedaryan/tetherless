@@ -77,6 +77,15 @@ public class ChatClientTest {
     private String aliceId;
     private String bobId;
 
+    /**
+     * What Bob's client stored for each received message, as "id|sender|preview".
+     *
+     * <p>The frame broadcast to listeners carries only the message text, so reply metadata - which
+     * is where a forged quotation shows up - is invisible from there. Asserting on the payload
+     * alone let a test pass against the unfixed code.
+     */
+    private final List<String> bobSavedReplies = new ArrayList<>();
+
     /** Kept as fields so a test can forge a frame that is genuinely signed by the right peer. */
     private KeyPair aliceKeys;
     private KeyPair bobKeys;
@@ -109,7 +118,8 @@ public class ChatClientTest {
                 new PeerDirectory(aliceDir), "Alice");
         bobClient = new ChatClient(bobId, bobKeys,
                 new SessionManager(bobId, bobLookup),
-                discardingRepository(dbKey), keyStore(bobKeys, aliceKeys.getPublic()),
+                replyRecordingRepository(dbKey, bobSavedReplies),
+                keyStore(bobKeys, aliceKeys.getPublic()),
                 new PeerDirectory(bobDir), "Bob");
 
         injectTransport(aliceClient, aliceToBob, bobClient);
@@ -117,6 +127,23 @@ public class ChatClientTest {
 
         aliceClient.addMessageListener(silentListener());
         bobClient.addMessageListener(silentListener());
+    }
+
+    /** Records the reply metadata of everything stored, and nothing else. */
+    private static MessageRepository replyRecordingRepository(SecretKey dbKey, List<String> seen) {
+        return new MessageRepository(":memory:", dbKey) {
+            @Override
+            public void saveMessage(String sender, String receiver, String content, long timestamp) {
+                // Discarded.
+            }
+
+            @Override
+            public void saveMessage(String messageId, String sender, String receiver, String content,
+                                    long timestamp, ChatMessage.Status status, String replyToId,
+                                    String replyToSender, String replyToPreview, boolean markRead) {
+                seen.add(replyToId + "|" + replyToSender + "|" + replyToPreview);
+            }
+        };
     }
 
     /** Persistence is not what these tests are about; MessageRepositoryTest covers it. */
@@ -355,6 +382,93 @@ public class ChatClientTest {
         assertEquals(Session.State.ESTABLISHED, aliceClient.getSession().getState());
         bobClient.setCurrentPeerId(aliceId);
         assertEquals(Session.State.ESTABLISHED, bobClient.getSession().getState());
+    }
+
+    /**
+     * A quoted message that contains the body format's own delimiters must not move its frame.
+     *
+     * <p>A reply is encoded as {@code marker id US sender US preview RS text}, and nothing removed
+     * those separators from the fields being embedded. A preview holding the record separator
+     * ended the header early, so its own tail was delivered as the message; one holding the unit
+     * separator shifted every field after it. The preview is whatever the peer wrote, so the peer
+     * chose where the boundaries fell.
+     */
+    @Test
+    public void aQuotedMessageContainingTheDelimitersDoesNotCorruptTheReply() {
+        aliceClient.startSecureChat(bobId);
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+
+        // Both separators, in the field an attacker controls.
+        String hostilePreview = "before\u001Eafter\u001Fmore";
+        ChatMessage quoted = new ChatMessage("quoted-id", bobId, aliceId, hostilePreview,
+                System.currentTimeMillis(), ChatMessage.Status.DELIVERED);
+
+        aliceClient.sendMessage("my actual reply", quoted);
+
+        assertEquals(1, deliveredToBob.size());
+        assertEquals("the message text must arrive exactly as typed", "my actual reply",
+                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+    }
+
+    /** The same, with the separators in the quoted sender and id rather than the preview. */
+    @Test
+    public void delimitersInTheQuotedSenderOrIdDoNotShiftTheFields() {
+        aliceClient.startSecureChat(bobId);
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+
+        ChatMessage quoted = new ChatMessage("id\u001Fwith\u001Eseparators",
+                bobId + "\u001Fspoofed", aliceId, "an ordinary preview",
+                System.currentTimeMillis(), ChatMessage.Status.DELIVERED);
+
+        aliceClient.sendMessage("the real text", quoted);
+
+        assertEquals(1, deliveredToBob.size());
+        assertEquals("the real text",
+                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+    }
+
+    /**
+     * A plain message must not be able to pass itself off as a reply.
+     *
+     * <p>{@code parse} decides a message is a reply by looking for the marker at the front, and
+     * {@code encode} passed a non-reply through untouched - so text that merely began with the
+     * marker arrived as a quotation of something nobody had sent, with the id, sender and preview
+     * taken from whatever followed it.
+     */
+    @Test
+    public void textBeginningWithTheReplyMarkerIsNotTreatedAsAReply() {
+        aliceClient.startSecureChat(bobId);
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+
+        String forged = "\u0001tgreply\u001Fforged-id\u001FAdmin\u001Fa quote you never sent"
+                + "\u001Elook at this";
+
+        aliceClient.sendMessage(forged);
+
+        assertEquals(1, deliveredToBob.size());
+        // The forgery lands in the reply metadata, not in the text. Asserting on the
+        // delivered payload alone passes against the unfixed code, which is how the
+        // first version of this test proved nothing.
+        assertEquals("a plain message was stored as a quotation of something never sent",
+                "null|null|null", bobSavedReplies.get(0));
+    }
+
+    /** An ordinary reply still works; the stripping must not have broken the feature. */
+    @Test
+    public void anOrdinaryReplyStillCarriesItsQuote() {
+        aliceClient.startSecureChat(bobId);
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+
+        ChatMessage quoted = new ChatMessage("quoted-id", bobId, aliceId, "what Bob said",
+                System.currentTimeMillis(), ChatMessage.Status.DELIVERED);
+
+        aliceClient.sendMessage("answering that", quoted);
+
+        assertEquals(1, deliveredToBob.size());
+        assertEquals("answering that",
+                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+        assertEquals("the quote must still arrive intact",
+                "quoted-id|" + bobId + "|what Bob said", bobSavedReplies.get(0));
     }
 
     @Test
