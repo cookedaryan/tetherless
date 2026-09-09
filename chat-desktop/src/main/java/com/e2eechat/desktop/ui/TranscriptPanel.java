@@ -56,6 +56,9 @@ public class TranscriptPanel extends JLayeredPane {
     private static final long GROUP_WINDOW_MS = 5 * 60 * 1000L;
 
     private final JPanel column = new JPanel();
+
+    /** The in-flight eased scroll to the foot, cancelled if another message lands mid-glide. */
+    private Motion.Handle scrollAnimation;
     private final JScrollPane scroll;
     private final IconButton jumpToLatest;
     private final TypingIndicator typingIndicator = new TypingIndicator();
@@ -212,11 +215,15 @@ public class TranscriptPanel extends JLayeredPane {
 
     public void append(ChatMessage message) {
         BubbleRow arrived = appendInternal(message);
+        // Lay out the one new row - but do NOT repaint the whole column. The blanket
+        // column.repaint() that used to be here redrew the entire transcript on every message,
+        // which is the "refresh" that made an arriving message feel like the screen redrawing. The
+        // new row paints itself as a result of revalidate, and a regrouped previous bubble repaints
+        // itself inside setTail, so nothing else needs to be touched.
         column.revalidate();
-        column.repaint();
         arrived.playEntrance();
         if (isNearBottom()) {
-            scrollToBottom(false);
+            scrollToBottom(true);
         } else {
             updateJumpButton();
         }
@@ -419,19 +426,34 @@ public class TranscriptPanel extends JLayeredPane {
     }
 
     /**
-     * Scrolls to the newest message in a single visible move.
+     * Brings the newest message into view.
      *
-     * <p>This used to jump to {@code getMaximum()} twice through nested {@code invokeLater}s: once
-     * on the height from before the new row was laid out, then again once layout had caught up. The
-     * first jump landed a row short, so every arriving message snapped the view to the old bottom
-     * for one frame and then to the real bottom - the jitter. Forcing the scroll pane's pending
-     * layout to settle first means the maximum is already correct, so one assignment lands cleanly.
+     * <p>When {@code animate} is set the scroll position <em>eases</em> to the foot instead of
+     * snapping, so a message arriving while you are at the bottom glides up rather than jumping;
+     * together with the bubble's own fade-in that is the smooth pop the transcript should have. The
+     * instant form is kept for loading a whole history, where there is nothing to animate from.
+     *
+     * <p>Either way the pending layout is forced to settle first, so the target is the real foot and
+     * not the height from before the new row existed - the double jump that used to live here (snap
+     * to the old bottom, then to the new one) was the jitter.
      */
     public void scrollToBottom(boolean animate) {
         SwingUtilities.invokeLater(() -> {
             scroll.validate();
             JScrollBar bar = scroll.getVerticalScrollBar();
-            bar.setValue(bar.getMaximum());
+            if (scrollAnimation != null) {
+                scrollAnimation.cancel();
+                scrollAnimation = null;
+            }
+            int start = bar.getValue();
+            int target = bar.getMaximum() - bar.getVisibleAmount();
+            if (!animate || Motion.isReducedMotion() || target <= start) {
+                bar.setValue(bar.getMaximum());
+                return;
+            }
+            int distance = target - start;
+            scrollAnimation = Motion.animate(Motion.NORMAL, Motion.Easing.EASE_OUT_QUART,
+                    progress -> bar.setValue(start + Math.round(distance * progress)), null);
         });
     }
 
