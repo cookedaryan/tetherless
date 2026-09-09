@@ -342,7 +342,9 @@ which is a real limitation regardless of how thorough they are.
   platform can express, which is weaker.
 - **Session keys:** memory only, never written to disk, discarded on restart. They are held as
   `SecretKeySpec`, which the JDK does not let you zero, so a session key stays in the heap until
-  garbage collection reclaims it. Passphrases *are* zeroed once the keys they derive exist. No
+  garbage collection reclaims it. The material it is *derived from* is zeroed: the raw
+  Diffie-Hellman agreement, its padded copy, and HKDF's intermediate values are wiped as soon as
+  the key exists, so the input every message key descends from does not linger alongside it. Passphrases *are* zeroed once the keys they derive exist. No
   heap-dump analysis has been performed to confirm how long key material actually survives; that
   remains unverified rather than known-good.
 
