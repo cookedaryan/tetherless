@@ -121,16 +121,28 @@ public class SessionManager {
                 return new ProcessResult(Outcome.DROP_BAD_DIRECTION, null);
             }
 
+            // Decrypt first, and only then let the counter into the replay window. GCM
+            // authenticates as well as encrypts, so reaching past this line means the frame was
+            // produced by something holding the session key - not merely by something holding a
+            // signing key the sender's identity vouches for.
+            //
+            // The order is what decides who can move the window. Registering first meant a frame
+            // whose ciphertext was pure noise still claimed its counter, so anything able to get a
+            // signed frame this far could spend counters the genuine traffic still needed. Same
+            // principle as the direction check above: a frame that turns out to be unusable must
+            // not leave a mark behind.
+            byte[] plaintext;
+            try {
+                plaintext = AESUtils.decrypt(msg.getPayload(), session.getSecretKey(), iv);
+            } catch (Exception e) {
+                return new ProcessResult(Outcome.DROP_NO_SESSION, null);
+            }
+
             if (!session.registerReceivedCounter(counter)) {
                 return new ProcessResult(Outcome.DROP_REPLAY, null);
             }
 
-            try {
-                byte[] plaintext = AESUtils.decrypt(msg.getPayload(), session.getSecretKey(), iv);
-                return new ProcessResult(Outcome.DELIVER, plaintext);
-            } catch (Exception e) {
-                return new ProcessResult(Outcome.DROP_NO_SESSION, null); 
-            }
+            return new ProcessResult(Outcome.DELIVER, plaintext);
         }
         
         return new ProcessResult(Outcome.DELIVER, msg.getPayload());

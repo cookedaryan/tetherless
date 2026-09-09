@@ -130,6 +130,38 @@ public class NonceDirectionTest {
         assertArrayEquals("the real one".getBytes(StandardCharsets.UTF_8), genuine.plaintext);
     }
 
+    /**
+     * The same invariant one step further in: a frame that fails to authenticate must not spend a
+     * counter either.
+     *
+     * <p>The counter used to be registered before the ciphertext was opened, so a frame carrying
+     * nothing but noise still claimed its slot in the replay window. Anything that could get a
+     * signed frame this far could therefore burn counters the genuine traffic still needed.
+     * Registering after decryption means only something holding the session key can move the
+     * window - not merely something holding a key the sender's identity vouches for.
+     */
+    @Test
+    public void aFrameThatFailsToDecryptDoesNotSpendTheCounter() throws Exception {
+        byte[] nonce = iv(1, 99);
+        Message noise = MessageSigner.sign(new MessageBuilder()
+                .setType(MessageType.TEXT_MESSAGE)
+                .setSenderId(ALICE)
+                .setReceiverId(BOB)
+                .setPayload(new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
+                .setIv(nonce)
+                .setMessageId(UUID.randomUUID().toString())
+                .setTimestamp(System.currentTimeMillis())
+                .buildUnsigned(), aliceIdentity.getPrivate());
+
+        assertEquals(SessionManager.Outcome.DROP_NO_SESSION, bob.onMessage(noise).outcome);
+
+        SessionManager.ProcessResult genuine = bob.onMessage(fromAlice(1, 99, "the real one"));
+
+        assertEquals("counter 99 was spent by a frame that never authenticated",
+                SessionManager.Outcome.DELIVER, genuine.outcome);
+        assertArrayEquals("the real one".getBytes(StandardCharsets.UTF_8), genuine.plaintext);
+    }
+
     /** Both ends derive the bit from the ids, so each side expects the opposite of its own. */
     @Test
     public void thetwoSidesExpectOppositeBits() throws Exception {

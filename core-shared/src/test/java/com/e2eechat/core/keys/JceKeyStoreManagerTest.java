@@ -195,6 +195,104 @@ public class JceKeyStoreManagerTest {
         assertArrayEquals(peer.getEncoded(), loaded.get().getEncoded());
     }
 
+    /**
+     * A peer store that will not parse must stop the client, not empty it.
+     *
+     * <p>This used to log a warning and carry on with no pinned keys at all, which does not read
+     * as a security event but is one. Every contact becomes a stranger, so the next HELLO from
+     * someone known for months is trusted on sight, and the key-change warning - the one thing
+     * standing between a user and an impostor - cannot fire because there is nothing left to
+     * compare against. An attacker who can corrupt a file gets a trust reset for free.
+     */
+    @Test
+    public void aTruncatedPeerStoreStopsStartupRatherThanEmptyingIt() throws Exception {
+        File dir = tmp.newFolder("truncated");
+        JceKeyStoreManager manager = new JceKeyStoreManager(dir);
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        PublicKey peer = generator.generateKeyPair().getPublic();
+        manager.storePeerKey(PeerId.of(peer), peer);
+
+        // What an interrupted write actually leaves: the entry is there, the key is half of one.
+        // Properties.load reads ISO-8859-1, where every byte sequence is legal text, so this
+        // parses perfectly happily - which is exactly why catching the parse exception alone was
+        // not enough to notice.
+        File store = new File(dir, "peers.properties");
+        byte[] whole = java.nio.file.Files.readAllBytes(store.toPath());
+        java.nio.file.Files.write(store.toPath(),
+                java.util.Arrays.copyOf(whole, whole.length - 40));
+
+        try {
+            new JceKeyStoreManager(dir);
+            fail("a damaged peer store must not be silently discarded");
+        } catch (IllegalStateException expected) {
+            assertTrue("the failure should say what to do about it: " + expected.getMessage(),
+                    expected.getMessage().contains("peers.properties"));
+        }
+    }
+
+    /** The other shape of damage: bytes that Properties itself refuses. */
+    @Test
+    public void aPeerStoreThatWillNotParseStopsStartup() throws Exception {
+        File dir = tmp.newFolder("unparseable");
+        java.nio.file.Files.write(new File(dir, "peers.properties").toPath(),
+                // Assembled rather than written out: javac processes a unicode escape before it
+                // lexes the string, so a literal bad one will not compile.
+                ("somepeer=" + (char) 92 + "uZZZZ" + (char) 10)
+                        .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+
+        try {
+            new JceKeyStoreManager(dir);
+            fail("an unreadable peer store must not be silently discarded");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("peers.properties"));
+        }
+    }
+
+    /** A store holding real keys must of course still open. */
+    @Test
+    public void anIntactPeerStoreOpensNormally() throws Exception {
+        File dir = tmp.newFolder("intact");
+        JceKeyStoreManager manager = new JceKeyStoreManager(dir);
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        PublicKey first = generator.generateKeyPair().getPublic();
+        PublicKey second = generator.generateKeyPair().getPublic();
+        manager.storePeerKey(PeerId.of(first), first);
+        manager.storePeerKey(PeerId.of(second), second);
+
+        JceKeyStoreManager reopened = new JceKeyStoreManager(dir);
+        assertTrue(reopened.getPeerKey(PeerId.of(first)).isPresent());
+        assertTrue(reopened.getPeerKey(PeerId.of(second)).isPresent());
+    }
+
+    /**
+     * The store is replaced by a move, so a reader never sees it half-written.
+     *
+     * <p>A crash partway through overwriting it left a truncated file, and a truncated file is
+     * exactly what the constructor above now refuses to start on - so the atomic write is what
+     * keeps that refusal from being something users actually hit.
+     */
+    @Test
+    public void writingAPeerKeyLeavesNoTemporaryFileBehind() throws Exception {
+        File dir = tmp.newFolder("atomic");
+        JceKeyStoreManager manager = new JceKeyStoreManager(dir);
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        PublicKey peer = generator.generateKeyPair().getPublic();
+        manager.storePeerKey(PeerId.of(peer), peer);
+
+        assertTrue("the store should exist", new File(dir, "peers.properties").isFile());
+        assertFalse("a temporary file was left next to the store",
+                new File(dir, "peers.properties.tmp").exists());
+
+        // And it must be readable by a fresh manager, which is now a strict parse.
+        assertTrue(new JceKeyStoreManager(dir).getPeerKey(PeerId.of(peer)).isPresent());
+    }
+
     @Test
     public void aFingerprintIsStableAndKeySpecific() throws Exception {
         JceKeyStoreManager keyStore = new JceKeyStoreManager(home);

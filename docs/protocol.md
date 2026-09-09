@@ -280,6 +280,11 @@ peers share one derived key, so without a direction bit each side's n-th message
 same key and nonce together — which breaks GCM outright and leaks the XOR of the two plaintexts.
 That was a real bug here, found by checking the claim; it is pinned now by `IvReuseTest`.
 
+A counter is only ever in `[1, MAX_SENDS_PER_KEY]`, and the receiver enforces that. Left unbounded,
+one frame carrying `Long.MAX_VALUE` moved the replay window's high-water mark there and put its
+floor beyond every counter a peer would ever send again — ending the conversation permanently, with
+nothing about it that looked like an error.
+
 **The receiver checks the bit it is given**, and drops a frame that does not carry the one that
 peer should be transmitting on. Writing the bit correctly and never reading it left the property
 resting on the sender alone. The check runs before the counter reaches the replay window, so a
@@ -288,6 +293,12 @@ would be a way to silence a conversation rather than protect it.
 
 The nonce is counter-based rather than random because a random 96-bit nonce collides often enough to
 matter across a long session.
+
+A counter reaches the replay window only after the frame it came on has been decrypted. GCM
+authenticates as well as encrypts, so passing that point means the frame was produced by something
+holding the session key, not merely by something holding a key the sender's identity vouches for.
+Registering first meant a frame of pure noise still claimed its counter, and the counters a replay
+window has spent are ones the genuine traffic can no longer use.
 
 ## 10. Replay and reordering
 

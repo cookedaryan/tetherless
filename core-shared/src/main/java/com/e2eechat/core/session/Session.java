@@ -109,10 +109,23 @@ public class Session {
     /**
      * Records a received counter.
      *
-     * @return false if the frame must be dropped: either it has been seen before, or it is too far
-     *         behind to be told apart from a replay
+     * @return false if the frame must be dropped: the counter is not one a peer could legitimately
+     *         have sent, or it has been seen before, or it is too far behind to be told apart from
+     *         a replay
      */
     public synchronized boolean registerReceivedCounter(long counter) {
+        // A counter outside the range a sender can produce is not a late frame, it is a made-up
+        // one. getNextSendCounter starts at 1 and refuses to go past the budget, so anything
+        // outside [1, MAX_SENDS_PER_KEY] never came from an honest peer.
+        //
+        // Unbounded, this was a way to end a conversation with a single frame: one carrying
+        // Long.MAX_VALUE moved the high-water mark there, which put the window floor at
+        // Long.MAX_VALUE - REPLAY_WINDOW, and every ordinary counter that followed was below the
+        // floor and refused. The session was finished, permanently, and nothing about it looked
+        // like an error.
+        if (counter < 1 || counter > MAX_SENDS_PER_KEY) {
+            return false;
+        }
         if (counter <= highestReceivedCounter - REPLAY_WINDOW) {
             return false;
         }

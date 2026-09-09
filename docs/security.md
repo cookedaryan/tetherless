@@ -65,6 +65,18 @@ Trust is **trust-on-first-use**. The first key seen for a peer is pinned. If a d
 appears for a known peer, the client does not accept it silently: it reports a key change and blocks
 sending until the user re-verifies.
 
+**The pinned keys are never discarded quietly.** They are written by replacing the file rather than
+overwriting it, so an interrupted write cannot leave a half-written store; and on startup every
+stored value is decoded back into a key before the client will run. A store that is present but
+damaged stops it rather than emptying it.
+
+Decoding each entry, rather than only catching a parse failure, is the part that does the work.
+`Properties.load` reads ISO-8859-1, where every byte sequence is legal text, so a truncated file
+usually parses without complaint and yields entries that are merely wrong. Starting on those would
+be a trust reset wearing the clothes of a warning: contacts become strangers, the next `HELLO` from
+someone known for months is trusted on sight, and the key-change warning cannot fire because there
+is nothing left to compare against.
+
 **Display names prove nothing.** They are self-asserted metadata carried in `HELLO`. Anyone may
 claim any name, including one already in use. Only the peer id and the safety number identify who
 you are talking to. Names are stripped of control characters and bidirectional overrides before

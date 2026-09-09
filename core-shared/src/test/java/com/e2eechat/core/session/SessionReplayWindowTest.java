@@ -31,6 +31,45 @@ public class SessionReplayWindowTest {
         session = new Session("peer");
     }
 
+    /**
+     * One frame used to be enough to end a conversation for good.
+     *
+     * <p>Nothing bounded the counter, so a frame carrying {@code Long.MAX_VALUE} moved the
+     * high-water mark there and put the window floor at {@code Long.MAX_VALUE - 1024}. Every
+     * ordinary counter that followed sat below the floor and was refused as a replay. The session
+     * was finished permanently, and nothing about it looked like an error - the messages simply
+     * stopped arriving.
+     */
+    @Test
+    public void aCounterBeyondTheSendBudgetCannotBrickTheSession() {
+        assertTrue(session.registerReceivedCounter(1));
+
+        assertFalse("a counter no sender could have produced was accepted",
+                session.registerReceivedCounter(Long.MAX_VALUE));
+
+        assertTrue("ordinary traffic must still be accepted afterwards",
+                session.registerReceivedCounter(2));
+        assertTrue(session.registerReceivedCounter(3));
+    }
+
+    /** The budget is the ceiling: one past it never came from an honest peer. */
+    @Test
+    public void aCounterJustPastTheBudgetIsRefused() {
+        assertTrue(session.registerReceivedCounter(Session.MAX_SENDS_PER_KEY));
+        assertFalse(session.registerReceivedCounter(Session.MAX_SENDS_PER_KEY + 1));
+    }
+
+    /** Counters start at 1, so zero and anything below it are made up. */
+    @Test
+    public void zeroAndNegativeCountersAreRefused() {
+        assertFalse(session.registerReceivedCounter(0));
+        assertFalse(session.registerReceivedCounter(-1));
+        assertFalse(session.registerReceivedCounter(Long.MIN_VALUE));
+
+        assertTrue("a rejected counter must not have moved the window",
+                session.registerReceivedCounter(1));
+    }
+
     @Test
     public void aCounterNotSeenBeforeIsAccepted() {
         assertTrue(session.registerReceivedCounter(1));

@@ -1,5 +1,7 @@
 package com.e2eechat.core.keys;
 
+import com.e2eechat.core.util.Redact;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,6 +9,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -48,10 +53,61 @@ public class JceKeyStoreManager implements IdentityKeyStore {
             try (FileInputStream fis = new FileInputStream(peersFile)) {
                 peerProperties.load(fis);
             } catch (Exception e) {
-                LOG.warn("Could not read the stored peer keys at {}; starting with none",
-                        peersFile.getAbsolutePath(), e);
+                // Fails closed, and the difference matters. This used to log and carry on with an
+                // empty store, which does not read as a security event but is one: every pinned
+                // key is gone, so the next HELLO from a contact we have known for months is
+                // treated as a first meeting and trusted on sight. The warning that a key had
+                // changed - the single thing standing between a user and an impostor - cannot
+                // fire, because there is nothing left to compare against. Refusing to start is
+                // recoverable; silently re-trusting everyone is not.
+                throw unusableStore("it could not be read", e);
+            }
+            verifyEveryPinnedKeyParses();
+        }
+    }
+
+    /**
+     * Refuses to run on a peer store that is present but damaged.
+     *
+     * <p>{@link Properties#load} is not the check it looks like. It reads ISO-8859-1, where every
+     * byte sequence is legal text, so a truncated or overwritten file usually parses without
+     * complaint and yields entries that are simply wrong - a half-written Base64 value, or a peer
+     * silently missing. Catching the exception alone would have left the common case of corruption
+     * sailing straight through, so every stored value is decoded here instead: if it is not a key
+     * we could actually verify a signature against, the store is not trustworthy.
+     *
+     * <p>Property names are deliberately not validated. Ids pinned before the key-derived format
+     * are still legitimate entries, and refusing to start on one would turn an upgrade into a
+     * lockout.
+     */
+    private void verifyEveryPinnedKeyParses() {
+        for (String peerId : peerProperties.stringPropertyNames()) {
+            try {
+                decodePeerKey(peerProperties.getProperty(peerId));
+            } catch (Exception e) {
+                throw unusableStore("the entry for " + Redact.id(peerId)
+                        + " is not a usable identity key", e);
             }
         }
+    }
+
+    /**
+     * The refusal itself.
+     *
+     * <p>Fails closed, and the difference matters. This used to log and carry on with an empty
+     * store, which does not read as a security event but is one: every pinned key is gone, so the
+     * next {@code HELLO} from a contact known for months is treated as a first meeting and trusted
+     * on sight. The warning that a key had changed - the single thing standing between a user and
+     * an impostor - cannot fire, because there is nothing left to compare against. Refusing to
+     * start is recoverable; silently re-trusting everyone is not.
+     */
+    private IllegalStateException unusableStore(String because, Exception cause) {
+        return new IllegalStateException(
+                "The stored peer keys at " + peersFile.getAbsolutePath() + " are unusable: "
+                        + because + ". Refusing to start rather than discard them, because "
+                        + "without them a peer presenting a new identity key cannot be told from "
+                        + "one you have never met. Restore the file from a backup, or delete it "
+                        + "to start over and re-verify every contact's safety number.", cause);
     }
     
     @Override
@@ -106,12 +162,39 @@ public class JceKeyStoreManager implements IdentityKeyStore {
         LOG.info("Created a new identity key at {}", ksFile.getAbsolutePath());
     }
 
+    /**
+     * Pins a peer's identity key.
+     *
+     * <p>Written to a temporary file and moved into place, so the store on disk is either the old
+     * set of keys or the new one and never a half-written file. Overwriting in place meant a
+     * crash or a power cut mid-write left a truncated file, and a truncated file is one the next
+     * startup cannot parse - which is the door into the trust reset the constructor now refuses
+     * to walk through.
+     */
     @Override
     public synchronized void storePeerKey(String peerId, PublicKey key) throws Exception {
         String b64 = Base64.getEncoder().encodeToString(key.getEncoded());
         peerProperties.setProperty(peerId, b64);
-        try (FileOutputStream fos = new FileOutputStream(peersFile)) {
+
+        File temporary = new File(peersFile.getParentFile(), peersFile.getName() + ".tmp");
+        try (FileOutputStream fos = new FileOutputStream(temporary)) {
             peerProperties.store(fos, "Tetherless Peer Public Keys");
+            fos.flush();
+            // The move is only atomic with respect to what has actually reached the disk. Without
+            // this, a crash can leave the rename done and the contents still in the page cache.
+            fos.getFD().sync();
+        }
+
+        try {
+            Files.move(temporary.toPath(), peersFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            // Some filesystems cannot promise it. A replacing move is still better than writing
+            // over the live file, which is the failure this is here to avoid.
+            LOG.debug("Atomic move unavailable for {}; falling back to a replacing move",
+                    peersFile.getAbsolutePath());
+            Files.move(temporary.toPath(), peersFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING);
         }
     }
     
@@ -121,9 +204,14 @@ public class JceKeyStoreManager implements IdentityKeyStore {
         if (b64 == null) {
             return Optional.empty();
         }
-        byte[] keyBytes = Base64.getDecoder().decode(b64);
+        return Optional.of(decodePeerKey(b64));
+    }
+
+    /** Turns one stored value back into a key. Throws if it is not one. */
+    private static PublicKey decodePeerKey(String base64) throws Exception {
+        byte[] keyBytes = Base64.getDecoder().decode(base64);
         KeyFactory kf = KeyFactory.getInstance("RSA");
-        return Optional.of(kf.generatePublic(new X509EncodedKeySpec(keyBytes)));
+        return kf.generatePublic(new X509EncodedKeySpec(keyBytes));
     }
     
     @Override
