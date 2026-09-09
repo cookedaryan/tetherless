@@ -16,6 +16,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -229,6 +231,118 @@ public class ConnectionManagerTest {
         }
         assertTrue("backoff never advanced past attempt 0, so the loop is unthrottled: " + attempts,
                 highest >= 3);
+    }
+
+    /**
+     * A connection attempt that gave up must not leave a reader attached to its successor.
+     *
+     * <p>{@code connectInternal} publishes the socket, the streams, the threads and the
+     * registration latch to fields shared by every attempt, and it is the first path that throws
+     * after the reader has started - the reconnect loop only joins the reader on the success path.
+     * A reader that outlives its own attempt therefore goes back round its loop and reads
+     * {@code in}, which by then is the <em>next</em> connection's stream: two reader threads on one
+     * {@code FrameReader}, and a reader that can go on to close the live socket and release the
+     * registration wait belonging to a connection it has nothing to do with.
+     *
+     * <p>The abandoned reader is held still rather than raced. The relay sends it a frame, and the
+     * listener - which runs on the reader thread - parks there until this test lets it go, which
+     * makes it provably alive across the whole of the second attempt. The relay then stays silent
+     * on the second connection, so an abandoned reader that has latched onto the wrong stream
+     * blocks there forever and one that kept its own dies on its own closed socket. What is
+     * asserted is which of those happened.
+     */
+    @Test
+    public void anAbandonedAttemptDoesNotLatchOntoItsSuccessor() throws Exception {
+        final CountDownLatch readerParked = new CountDownLatch(1);
+        final CountDownLatch releaseReader = new CountDownLatch(1);
+        final CountDownLatch firstAttemptFailed = new CountDownLatch(1);
+        final CountDownLatch secondAttemptGo = new CountDownLatch(1);
+        final Thread[] abandonedReader = new Thread[1];
+
+        MessageListener parkingListener = new MessageListener() {
+            @Override
+            public void onMessageReceived(Message message) {
+                delivered.add(message);
+                abandonedReader[0] = Thread.currentThread();
+                readerParked.countDown();
+                try {
+                    releaseReader.await(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public void onConnectionStateChanged(ConnectionState state) {
+                states.add(state);
+            }
+        };
+
+        relay.acknowledgeHello(false);
+        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", parkingListener) {
+            @Override
+            protected long registrationTimeoutMillis() {
+                return 1000;
+            }
+
+            @Override
+            protected long backoffDelayMillis(int attempt) {
+                firstAttemptFailed.countDown();
+                try {
+                    secondAttemptGo.await(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return 0;
+            }
+        };
+
+        try {
+            manager.start();
+
+            StubRelay.Connection first = relay.awaitConnection(TIMEOUT_MILLIS);
+            assertNotNull("the first attempt never reached the relay", first);
+            assertNotNull("the first HELLO never arrived", relay.awaitFrame(TIMEOUT_MILLIS));
+
+            first.send(new MessageBuilder()
+                    .setType(MessageType.TEXT_MESSAGE)
+                    .setSenderId("bob")
+                    .setReceiverId("alice")
+                    .setMessageId(UUID.randomUUID().toString())
+                    .setTimestamp(System.currentTimeMillis())
+                    .setPayload("hold here".getBytes(StandardCharsets.UTF_8))
+                    .setIv(new byte[12])
+                    .setSignature(new byte[32])
+                    .build());
+
+            assertTrue("the first attempt's reader never took the frame",
+                    readerParked.await(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS));
+            assertTrue("the first attempt never gave up",
+                    firstAttemptFailed.await(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS));
+
+            // The relay answers from here on, so the second attempt is one that stands up. It
+            // sends nothing else: the second connection stays silent for the rest of the test.
+            relay.acknowledgeHello(true);
+            secondAttemptGo.countDown();
+            awaitState(ConnectionState.CONNECTED);
+            int connectionsWhenHealthy = relay.connectionCount();
+
+            // Let the abandoned reader finish. Everything it touches from here belongs to a
+            // connection that is already over.
+            releaseReader.countDown();
+            abandonedReader[0].join(TIMEOUT_MILLIS);
+
+            assertFalse("the abandoned reader is still running: it went back round its loop and "
+                            + "is reading the replacement connection's socket",
+                    abandonedReader[0].isAlive());
+            assertEquals("the abandoned reader dropped the live connection: " + states,
+                    ConnectionState.CONNECTED, states.get(states.size() - 1));
+            assertEquals("the client had to reconnect after the abandoned reader unwound",
+                    connectionsWhenHealthy, relay.connectionCount());
+        } finally {
+            releaseReader.countDown();
+            secondAttemptGo.countDown();
+        }
     }
 
     @Test

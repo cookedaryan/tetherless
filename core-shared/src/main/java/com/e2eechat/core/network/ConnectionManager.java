@@ -50,27 +50,58 @@ public class ConnectionManager {
     protected final String clientId;
     protected final MessageListener listener;
     
-    private SSLSocket socket;
-    private FrameReader in;
-    private FrameWriter out;
-    
-    private Thread readerThread;
-    private Thread writerThread;
+    /**
+     * Everything one connection attempt owns.
+     *
+     * <p>These were fields on the manager, shared by every attempt in turn. {@link
+     * #connectInternal()} is the first path that throws after the reader thread has started, and
+     * the reconnect loop only joins the reader on the success path - so a reader that outlived its
+     * own attempt went back round its loop reading whatever {@code in} pointed at by then, which
+     * was the <em>next</em> connection's stream. Two readers on one {@link FrameReader}, and a
+     * reader able to close a live socket and release a registration wait it had nothing to do
+     * with. Handing each attempt its own is what makes an abandoned one harmless: it can only ever
+     * finish off the connection it was started for.
+     */
+    private static final class Attempt {
+        SSLSocket socket;
+        FrameReader in;
+        FrameWriter out;
+        Thread reader;
+        Thread writer;
+
+        /**
+         * Released when the relay acknowledges this attempt's registration, and also when it ends
+         * without one, so a dead socket is not waited out for the full timeout.
+         */
+        final CountDownLatch registered = new CountDownLatch(1);
+
+        /** True only when an acknowledgement actually arrived, as opposed to the wait ending. */
+        volatile boolean confirmed;
+
+        /** Closes this attempt's socket and stands its writer down. Idempotent. */
+        void close() {
+            try {
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                }
+            } catch (IOException e) {
+                // Ignored
+            }
+            if (writer != null) {
+                writer.interrupt();
+            }
+        }
+    }
+
+    /** The most recent attempt. Read by {@link #stop()} and {@link #waitForDisconnect()}. */
+    private volatile Attempt attempt;
+
     private final BlockingQueue<Message> outboundQueue = new LinkedBlockingQueue<>();
-    
+
     private volatile ConnectionState state = ConnectionState.DISCONNECTED;
     private final AtomicBoolean running = new AtomicBoolean(false);
     
     private ExecutorService reconnectExecutor;
-
-    /**
-     * Released when the relay acknowledges this connection's registration, and also when the
-     * connection ends without one, so a dead socket is not waited out for the full timeout.
-     */
-    private volatile CountDownLatch registered;
-
-    /** True only when an acknowledgement actually arrived, as opposed to the wait being released. */
-    private volatile boolean registrationConfirmed;
 
     public ConnectionManager(String host, int port, String clientId, MessageListener listener) {
         this.host = host;
@@ -189,27 +220,28 @@ public class ConnectionManager {
         // Pins the relay's development certificate. A production deployment would trust the system
         // CAs plus its own issuer instead; see TlsSupport for how the store is located.
         SSLSocketFactory factory = TlsSupport.clientContext().getSocketFactory();
-        socket = (SSLSocket) factory.createSocket(host, port);
-        socket.setEnabledProtocols(new String[]{"TLSv1.3"});
-        socket.startHandshake();
-        
-        in = new FrameReader(socket.getInputStream());
-        out = new FrameWriter(socket.getOutputStream());
 
-        // Armed before the reader starts, so an acknowledgement cannot arrive with nothing to
-        // record it.
-        registrationConfirmed = false;
-        registered = new CountDownLatch(1);
+        // Its own socket, streams and registration latch, so nothing this attempt starts can
+        // reach into the attempt that replaces it. The latch is armed by the constructor, before
+        // the reader exists, so an acknowledgement cannot arrive with nothing to record it.
+        final Attempt fresh = new Attempt();
+        fresh.socket = (SSLSocket) factory.createSocket(host, port);
+        fresh.socket.setEnabledProtocols(new String[]{"TLSv1.3"});
+        fresh.socket.startHandshake();
+
+        fresh.in = new FrameReader(fresh.socket.getInputStream());
+        fresh.out = new FrameWriter(fresh.socket.getOutputStream());
+        attempt = fresh;
 
         // Start writer
-        writerThread = new Thread(this::writerLoop, "Client-Writer");
-        writerThread.setDaemon(true);
-        writerThread.start();
-        
+        fresh.writer = new Thread(() -> writerLoop(fresh), "Client-Writer");
+        fresh.writer.setDaemon(true);
+        fresh.writer.start();
+
         // Start reader
-        readerThread = new Thread(this::readerLoop, "Client-Reader");
-        readerThread.setDaemon(true);
-        readerThread.start();
+        fresh.reader = new Thread(() -> readerLoop(fresh), "Client-Reader");
+        fresh.reader.setDaemon(true);
+        fresh.reader.start();
         
         // Send HELLO
         Message hello = new MessageBuilder()
@@ -224,31 +256,31 @@ public class ConnectionManager {
         // this id it will answer anything addressed here with RECIPIENT_OFFLINE, and a client that
         // called itself connected in that window would send a handshake into the gap and have it
         // refused. Waiting for the acknowledgement is what makes CONNECTED mean routable.
-        registered.await(registrationTimeoutMillis(), TimeUnit.MILLISECONDS);
-        if (!registrationConfirmed) {
-            closeSocket();
+        fresh.registered.await(registrationTimeoutMillis(), TimeUnit.MILLISECONDS);
+        if (!fresh.confirmed) {
+            fresh.close();
             throw new IOException("The relay did not acknowledge the registration");
         }
     }
 
-    private void writerLoop() {
+    private void writerLoop(Attempt own) {
         try {
             while (running.get() && !Thread.currentThread().isInterrupted()) {
                 Message msg = outboundQueue.take();
-                out.writeMessage(msg);
+                own.out.writeMessage(msg);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             logger.error("Writer error", e);
-            closeSocket();
+            own.close();
         }
     }
 
-    private void readerLoop() {
+    private void readerLoop(Attempt own) {
         try {
             while (running.get() && !Thread.currentThread().isInterrupted()) {
-                Message msg = in.readMessage();
+                Message msg = own.in.readMessage();
                 if (msg.getType() == MessageType.PING) {
                     Message pong = new MessageBuilder()
                             .setType(MessageType.PONG)
@@ -258,14 +290,14 @@ public class ConnectionManager {
                     outboundQueue.offer(pong);
                 } else if (msg.getType() == MessageType.DISCONNECT) {
                     logger.info("Server requested disconnect.");
-                    closeSocket();
+                    own.close();
                     break;
                 } else if (msg.getType() == MessageType.HELLO_ACK) {
                     // Between this client and the relay, like PING and DISCONNECT. It says the id
                     // is registered and the relay will route to it; it is not application traffic
                     // and never reaches the listener.
-                    registrationConfirmed = true;
-                    releaseRegistrationWait();
+                    own.confirmed = true;
+                    own.registered.countDown();
                 } else {
                     if (listener != null) {
                         listener.onMessageReceived(msg);
@@ -276,43 +308,24 @@ public class ConnectionManager {
             if (running.get()) {
                 logger.warn("Reader error: {}", e.getMessage());
             }
-            closeSocket();
+            own.close();
         } finally {
-            // The connection is over. If anything is still waiting to be told this client was
+            // This connection is over. If anything is still waiting to be told this client was
             // registered, it never will be, and waiting out the full timeout on a socket that is
-            // already gone would only slow the retry down.
-            releaseRegistrationWait();
-        }
-    }
-
-    /** Wakes whatever is waiting on the registration, confirmed or not. */
-    private void releaseRegistrationWait() {
-        CountDownLatch latch = registered;
-        if (latch != null) {
-            latch.countDown();
+            // already gone would only slow the retry down. It is this attempt's own wait, so an
+            // abandoned reader releasing it cannot abort a healthy successor.
+            own.registered.countDown();
         }
     }
 
     protected void waitForDisconnect() {
+        Attempt current = attempt;
         try {
-            if (readerThread != null) {
-                readerThread.join();
+            if (current != null && current.reader != null) {
+                current.reader.join();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    private void closeSocket() {
-        try {
-            if (socket != null && !socket.isClosed()) {
-                socket.close();
-            }
-        } catch (IOException e) {
-            // Ignored
-        }
-        if (writerThread != null) {
-            writerThread.interrupt();
         }
     }
 
@@ -340,19 +353,20 @@ public class ConnectionManager {
         running.set(false);
         updateState(ConnectionState.DISCONNECTED);
 
-        if (wasConnected && out != null) {
+        Attempt current = attempt;
+        if (wasConnected && current != null && current.out != null) {
             // The writer loop is stopping and will not drain the queue, so the frame goes out on
             // this thread. Stand the writer down first so the two cannot interleave mid-frame.
-            if (writerThread != null) {
-                writerThread.interrupt();
+            if (current.writer != null) {
+                current.writer.interrupt();
                 try {
-                    writerThread.join(WRITER_SHUTDOWN_MILLIS);
+                    current.writer.join(WRITER_SHUTDOWN_MILLIS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
             }
             try {
-                out.writeMessage(new MessageBuilder()
+                current.out.writeMessage(new MessageBuilder()
                         .setType(MessageType.DISCONNECT)
                         .setSenderId(clientId)
                         .setMessageId(UUID.randomUUID().toString())
@@ -363,7 +377,9 @@ public class ConnectionManager {
             }
         }
 
-        closeSocket();
+        if (current != null) {
+            current.close();
+        }
         // Null when stop() is called on a manager that was never started.
         if (reconnectExecutor != null) {
             reconnectExecutor.shutdownNow();
