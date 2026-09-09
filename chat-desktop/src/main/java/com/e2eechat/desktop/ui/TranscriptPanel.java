@@ -418,12 +418,20 @@ public class TranscriptPanel extends JLayeredPane {
         }
     }
 
-    /** Scrolls to the newest message. Runs twice so the second pass sees the re-laid-out height. */
+    /**
+     * Scrolls to the newest message in a single visible move.
+     *
+     * <p>This used to jump to {@code getMaximum()} twice through nested {@code invokeLater}s: once
+     * on the height from before the new row was laid out, then again once layout had caught up. The
+     * first jump landed a row short, so every arriving message snapped the view to the old bottom
+     * for one frame and then to the real bottom - the jitter. Forcing the scroll pane's pending
+     * layout to settle first means the maximum is already correct, so one assignment lands cleanly.
+     */
     public void scrollToBottom(boolean animate) {
         SwingUtilities.invokeLater(() -> {
+            scroll.validate();
             JScrollBar bar = scroll.getVerticalScrollBar();
             bar.setValue(bar.getMaximum());
-            SwingUtilities.invokeLater(() -> bar.setValue(bar.getMaximum()));
         });
     }
 
@@ -564,20 +572,22 @@ public class TranscriptPanel extends JLayeredPane {
     /** Telegram's three-dot "typing…" bubble, pinned to the foot of the transcript. */
     private static class TypingIndicator extends JComponent {
         private final Timer timer;
-        private int phase;
+        /** When the current typing run began, for a time-based (rather than stepped) animation. */
+        private long startNanos;
 
         TypingIndicator() {
             setOpaque(false);
             setVisible(false);
-            timer = new Timer(320, e -> {
-                phase = (phase + 1) % 3;
-                repaint();
-            });
+            // ~60fps. The old 320ms timer switched one of three dots fully on and the rest off,
+            // which reads as a three-frame stutter. Driving the dots from elapsed time instead lets
+            // them pulse continuously. Only this small component repaints, so the cost is trivial.
+            timer = new Timer(16, e -> repaint());
         }
 
         void setActive(boolean active) {
             setVisible(active);
             if (active) {
+                startNanos = System.nanoTime();
                 if (!timer.isRunning()) {
                     timer.start();
                 }
@@ -613,11 +623,16 @@ public class TranscriptPanel extends JLayeredPane {
             g2.setColor(Theme.bubbleIn());
             g2.fill(new RoundRectangle2D.Double(x, y, bubbleW, bubbleH, 26, 26));
 
+            // A travelling pulse: each dot's brightness and a slight rise follow a sine wave, the
+            // neighbour lagging a little so the highlight sweeps left to right.
+            double t = (System.nanoTime() - startNanos) / 1_000_000_000.0;
             for (int i = 0; i < 3; i++) {
-                float alpha = (i == phase) ? 1f : 0.35f;
+                double wave = Math.sin(t * 6.0 - i * 0.9);
+                double lift = Math.max(0.0, wave) * 2.5;
+                float alpha = (float) (0.35 + 0.5 * (0.5 + 0.5 * wave));
                 g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
                 g2.setColor(Theme.textSecondary());
-                g2.fill(new Ellipse2D.Double(x + 15 + i * 11, y + bubbleH / 2.0 - 3, 6, 6));
+                g2.fill(new Ellipse2D.Double(x + 15 + i * 11, y + bubbleH / 2.0 - 3 - lift, 6, 6));
             }
             g2.dispose();
         }
