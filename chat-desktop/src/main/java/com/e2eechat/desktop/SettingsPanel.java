@@ -34,6 +34,19 @@ public class SettingsPanel extends JPanel {
                 "Turns off the animations throughout the app.",
                 toggle(Motion.isReducedMotion(), Motion::setReducedMotion)));
 
+        body.add(Sheet.title("Notifications"));
+        body.add(Sheet.row(TgIcons.info(19), "Notify me about new messages",
+                "Only when the window is not in front.",
+                toggle(DesktopConfig.notificationsPreference(),
+                        DesktopConfig::setNotificationsPreference)));
+        body.add(Sheet.row(TgIcons.lock(19), "Include the message text",
+                "Off by default. A notification is handed to Windows, which shows it on the lock "
+                        + "screen and keeps it in the notification centre — so text that was "
+                        + "encrypted the whole way here would be copied out of the app in the "
+                        + "clear.",
+                toggle(DesktopConfig.notificationPreviewPreference(),
+                        DesktopConfig::setNotificationPreviewPreference)));
+
         body.add(Sheet.title("Privacy"));
         body.add(Sheet.row(TgIcons.info(19), "Check for updates on startup",
                 "Asks GitHub whether a newer version exists. GitHub, and anyone watching the "

@@ -33,6 +33,8 @@ public final class DesktopConfig {
     private static final Preferences PREFS = Preferences.userRoot().node("com/e2eechat/desktop");
 
     private static final String PREF_UPDATES = "updateChecks";
+    private static final String PREF_NOTIFICATIONS = "notifications";
+    private static final String PREF_NOTIFICATION_PREVIEW = "notificationPreview";
 
     /** Key in {@code config.properties} for the relay's pinned certificate. */
     static final String TRUSTSTORE_KEY = "truststore";
@@ -56,6 +58,62 @@ public final class DesktopConfig {
     /** Forgets the stored choice, so the built-in default applies again. Used by tests. */
     public static void clearUpdateChecksPreference() {
         PREFS.remove(PREF_UPDATES);
+    }
+
+    public static void setNotificationsPreference(boolean enabled) {
+        PREFS.putBoolean(PREF_NOTIFICATIONS, enabled);
+    }
+
+    /** Whether an arriving message raises a desktop notification at all. Defaults to on. */
+    public static boolean notificationsPreference() {
+        return PREFS.getBoolean(PREF_NOTIFICATIONS, true);
+    }
+
+    public static void setNotificationPreviewPreference(boolean enabled) {
+        PREFS.putBoolean(PREF_NOTIFICATION_PREVIEW, enabled);
+    }
+
+    /**
+     * Whether a notification carries the message text as well as who sent it.
+     *
+     * <p>Defaults to <strong>off</strong>, and that is a deliberate asymmetry with the rest of the
+     * app being helpful. A notification is handed to the operating system, which shows it on the
+     * lock screen, keeps it in a notification centre, and on Windows may sync it to other devices.
+     * Text that was end-to-end encrypted the whole way to this machine would be copied there in
+     * the clear, and the person who chose this app is the least likely to want that by default.
+     */
+    public static boolean notificationPreviewPreference() {
+        return PREFS.getBoolean(PREF_NOTIFICATION_PREVIEW, false);
+    }
+
+    /**
+     * Remembers where the window was and how big it was.
+     *
+     * <p>Stored per user rather than in the profile directory: it describes this person's screen,
+     * not this identity, and two profiles open side by side on one machine should not fight over
+     * one remembered position.
+     */
+    public static void saveWindowBounds(int x, int y, int width, int height, boolean maximised) {
+        PREFS.putInt("windowX", x);
+        PREFS.putInt("windowY", y);
+        PREFS.putInt("windowWidth", width);
+        PREFS.putInt("windowHeight", height);
+        PREFS.putBoolean("windowMaximised", maximised);
+    }
+
+    /** The remembered bounds, or {@code null} the first time or if they no longer fit a screen. */
+    public static java.awt.Rectangle windowBounds() {
+        int width = PREFS.getInt("windowWidth", -1);
+        int height = PREFS.getInt("windowHeight", -1);
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        return new java.awt.Rectangle(PREFS.getInt("windowX", 0), PREFS.getInt("windowY", 0),
+                width, height);
+    }
+
+    public static boolean windowMaximised() {
+        return PREFS.getBoolean("windowMaximised", false);
     }
 
     private final String host;

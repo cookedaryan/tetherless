@@ -28,8 +28,12 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
+import java.awt.Frame;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -52,6 +56,9 @@ public class ChatWindow extends JFrame
     private final String ownFingerprint;
 
     private final ConversationListPanel sidebar;
+    private final Notifier notifier;
+    /** The window's size and position while not maximised, so un-maximising has somewhere to go. */
+    private Rectangle normalBounds;
     private final ChatHeader header;
     private final JPanel rightPanel;
     private final Composer composer;
@@ -70,10 +77,9 @@ public class ChatWindow extends JFrame
         this.ownFingerprint = fingerprint;
 
         setTitle("Tetherless");
-        setSize(1080, 720);
         setMinimumSize(new Dimension(760, 520));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+        restoreBounds();
 
         sidebar = new ConversationListPanel(client, this::onConversationSelected);
         header = new ChatHeader();
@@ -115,6 +121,35 @@ public class ChatWindow extends JFrame
 
         client.addMessageListener(this);
         client.addOutboxListener(this);
+
+        notifier = new Notifier(this);
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowActivated(java.awt.event.WindowEvent e) {
+                notifier.clear();
+            }
+
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                saveBounds();
+                // Windows leaves a dead tray icon behind until something makes it repaint.
+                notifier.dispose();
+            }
+        });
+
+        // Tracked continuously because getBounds() on a maximised window returns the maximised
+        // size: restoring that would give a window with nothing to un-maximise back to.
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                rememberIfNormal();
+            }
+
+            @Override
+            public void componentMoved(java.awt.event.ComponentEvent e) {
+                rememberIfNormal();
+            }
+        });
 
         // Fire and forget. The check runs off the event thread and stays silent unless there is a
         // newer release, so nothing here can delay the window appearing.
@@ -303,10 +338,59 @@ public class ChatWindow extends JFrame
         }
 
         sidebar.notePreview(msg.getSenderId(), text, msg.getTimestamp(), false, !current);
-        if (!current) {
+
+        // Silent when the window is focused - the notifier decides that, since "did the user see
+        // it" is about the window, not about which conversation is open.
+        notifier.messageArrived(displayNameOf(msg.getSenderId()), text);
+        if (isActive() && !current) {
             // Audible cue for a chat the user is not currently looking at.
             java.awt.Toolkit.getDefaultToolkit().beep();
         }
+    }
+
+    // ------------------------------------------------------------ window state
+
+    private void rememberIfNormal() {
+        if ((getExtendedState() & Frame.MAXIMIZED_BOTH) == 0 && isShowing()) {
+            normalBounds = getBounds();
+        }
+    }
+
+    private void saveBounds() {
+        Rectangle bounds = normalBounds != null ? normalBounds : getBounds();
+        DesktopConfig.saveWindowBounds(bounds.x, bounds.y, bounds.width, bounds.height,
+                (getExtendedState() & Frame.MAXIMIZED_BOTH) != 0);
+    }
+
+    /**
+     * Puts the window back where it was, unless where it was no longer exists.
+     *
+     * <p>A remembered position can point at a monitor that has since been unplugged, which would
+     * open the window somewhere the user cannot reach it. Anything that does not land on a screen
+     * that is currently attached falls back to the default, centred.
+     */
+    private void restoreBounds() {
+        Rectangle saved = DesktopConfig.windowBounds();
+        if (saved == null || !isOnAScreen(saved)) {
+            setSize(1080, 720);
+            setLocationRelativeTo(null);
+        } else {
+            setBounds(saved);
+            normalBounds = saved;
+        }
+        if (DesktopConfig.windowMaximised()) {
+            setExtendedState(getExtendedState() | Frame.MAXIMIZED_BOTH);
+        }
+    }
+
+    private static boolean isOnAScreen(Rectangle bounds) {
+        for (GraphicsDevice screen : GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getScreenDevices()) {
+            if (screen.getDefaultConfiguration().getBounds().intersects(bounds)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isCurrentPeer(String senderId) {
