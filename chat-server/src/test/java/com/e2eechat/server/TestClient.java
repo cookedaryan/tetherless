@@ -105,6 +105,26 @@ public class TestClient {
         socket.getOutputStream().flush();
     }
 
+    /**
+     * Sends a text frame that claims to come from somebody else.
+     *
+     * <p>The relay is the only party that can check a sender id against something real - the
+     * connection it arrived on - so this is the shape of impersonation it has to refuse.
+     */
+    public void sendTextAs(String senderLabel, String receiverLabel, String text) throws Exception {
+        Message textMsg = new MessageBuilder()
+                .setType(MessageType.TEXT_MESSAGE)
+                .setSenderId(TestIdentity.named(senderLabel).peerId())
+                .setReceiverId(TestIdentity.named(receiverLabel).peerId())
+                .setMessageId(UUID.randomUUID().toString())
+                .setTimestamp(System.currentTimeMillis())
+                .setPayload(text.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .setIv(new byte[12])
+                .setSignature(new byte[32])
+                .build();
+        out.writeMessage(textMsg);
+    }
+
     public Message awaitMessage(long timeoutMs) throws Exception {
         socket.setSoTimeout((int) timeoutMs);
         try {

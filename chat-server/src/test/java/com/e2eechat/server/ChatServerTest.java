@@ -15,6 +15,7 @@ import java.nio.ByteBuffer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class ChatServerTest {
@@ -103,6 +104,58 @@ public class ChatServerTest {
         alice.sendHello();
         assertEquals(MessageType.HELLO_ACK, alice.awaitMessage(2000).getType());
         alice.close();
+    }
+
+    /**
+     * A client may not put another peer's id on a frame it sends.
+     *
+     * <p>The relay used to forward whatever sender id it was given. The recipient now verifies a
+     * signature on every inter-client frame, so a forgery no longer lands as genuine - but the
+     * relay carrying it at all means Mallory can direct traffic at Bob under Alice's name and
+     * spend Bob's rate limit and queue doing it. The connection is the one place a sender id can
+     * be checked against something real.
+     */
+    @Test(timeout = 10000)
+    public void aClientCannotSendUnderAnotherPeersId() throws Exception {
+        TestClient bob = new TestClient("bob");
+        bob.connect(port);
+        bob.register();
+
+        TestClient mallory = new TestClient("mallory");
+        mallory.connect(port);
+        mallory.register();
+
+        mallory.sendTextAs("alice", "bob", "trust me, I am Alice");
+
+        Message answer = mallory.awaitMessage(2000);
+        assertNotNull("the relay must answer a spoofed frame", answer);
+        assertEquals(MessageType.ERROR, answer.getType());
+        assertEquals("SENDER_MISMATCH", new String(answer.getPayload()));
+
+        assertNull("nothing forged may reach the addressee", bob.awaitMessage(500));
+
+        mallory.close();
+        bob.close();
+    }
+
+    /** The same frame sent under the sender's own id still routes. */
+    @Test(timeout = 10000)
+    public void aClientSendingUnderItsOwnIdStillRoutes() throws Exception {
+        TestClient alice = new TestClient("alice");
+        TestClient bob = new TestClient("bob");
+        alice.connect(port);
+        bob.connect(port);
+        alice.register();
+        bob.register();
+
+        alice.sendTextAs("alice", "bob", "genuinely me");
+
+        Message delivered = bob.awaitMessage(2000);
+        assertNotNull("an honest frame must still be delivered", delivered);
+        assertEquals(alice.peerId(), delivered.getSenderId());
+
+        alice.close();
+        bob.close();
     }
 
     /** A rejected registration gets the error, and must not also be acknowledged. */

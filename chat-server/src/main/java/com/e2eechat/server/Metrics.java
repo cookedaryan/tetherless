@@ -16,6 +16,9 @@ public class Metrics {
     /** Opening HELLOs that could not prove they owned the id they claimed. */
     public static final AtomicLong rejectedUnauthenticated = new AtomicLong(0);
 
+    /** Frames whose sender id was not the id the connection registered under. */
+    public static final AtomicLong rejectedSpoofedSender = new AtomicLong(0);
+
     public static void updateQueueHighWaterMark(int currentSize) {
         int currentMax = queueHighWaterMark.get();
         while (currentSize > currentMax) {
@@ -35,5 +38,6 @@ public class Metrics {
         rejectedRateLimit.set(0);
         rejectedBufferOverflow.set(0);
         rejectedUnauthenticated.set(0);
+        rejectedSpoofedSender.set(0);
     }
 }

@@ -275,10 +275,16 @@ nonce = [ direction: int32 ][ counter: int64 ]
 ```
 
 The counter increments per message. The direction bit differs between the two peers, derived from
-their ids. Both are necessary: the peers share one derived key, so without a direction bit each
-side's n-th message would reuse the same key and nonce together — which breaks GCM outright and
-leaks the XOR of the two plaintexts. That was a real bug here, found by checking the claim; it is
-pinned now by `IvReuseTest`.
+their ids: the side whose id sorts lower transmits on 1, the other on 0. Both are necessary: the
+peers share one derived key, so without a direction bit each side's n-th message would reuse the
+same key and nonce together — which breaks GCM outright and leaks the XOR of the two plaintexts.
+That was a real bug here, found by checking the claim; it is pinned now by `IvReuseTest`.
+
+**The receiver checks the bit it is given**, and drops a frame that does not carry the one that
+peer should be transmitting on. Writing the bit correctly and never reading it left the property
+resting on the sender alone. The check runs before the counter reaches the replay window, so a
+frame rejected here cannot spend a counter the genuine traffic still needs — otherwise the check
+would be a way to silence a conversation rather than protect it.
 
 The nonce is counter-based rather than random because a random 96-bit nonce collides often enough to
 matter across a long session.
@@ -325,6 +331,10 @@ The five-minute tolerance is also what stops ordinary clock drift breaking the a
 - Answers a successful registration with `HELLO_ACK`. A rejected one gets `ERROR` instead, never
   both.
 - Refuses a duplicate id, answering `ERROR` with `ID_TAKEN`.
+- Refuses a frame whose `senderId` is not the id the connection registered under, answering
+  `ERROR` with `SENDER_MISMATCH` and closing. The connection is the only place a sender id can be
+  checked against something the relay knows to be true; recipients verify signatures regardless,
+  but a frame the relay can already tell is a lie is not one it should carry.
 - Routes by `receiverId`, and answers `ERROR` with `RECIPIENT_OFFLINE` when nobody is there.
 - Answers `PING` with `PONG`, and disconnects idle connections.
 - Rate limits per connection, and caps connections per address.

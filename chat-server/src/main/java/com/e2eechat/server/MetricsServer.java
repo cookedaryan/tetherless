@@ -60,6 +60,7 @@ public class MetricsServer {
             sb.append("rejected_rate_limit_total ").append(Metrics.rejectedRateLimit.get()).append("\n");
             sb.append("rejected_buffer_overflow_total ").append(Metrics.rejectedBufferOverflow.get()).append("\n");
             sb.append("rejected_unauthenticated_total ").append(Metrics.rejectedUnauthenticated.get()).append("\n");
+            sb.append("rejected_spoofed_sender_total ").append(Metrics.rejectedSpoofedSender.get()).append("\n");
 
             byte[] response = sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, response.length);

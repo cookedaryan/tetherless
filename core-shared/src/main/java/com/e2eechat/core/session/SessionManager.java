@@ -13,7 +13,7 @@ import java.util.function.Function;
 public class SessionManager {
 
     public enum Outcome {
-        DELIVER, DROP_REPLAY, DROP_BAD_SIGNATURE, DROP_NO_SESSION, DROP_WRONG_RECIPIENT, REKEY_REQUIRED, HANDSHAKE_PROCEED, HANDSHAKE_DROPPED
+        DELIVER, DROP_REPLAY, DROP_BAD_SIGNATURE, DROP_NO_SESSION, DROP_WRONG_RECIPIENT, DROP_BAD_DIRECTION, REKEY_REQUIRED, HANDSHAKE_PROCEED, HANDSHAKE_DROPPED
     }
 
     public static class ProcessResult {
@@ -106,7 +106,21 @@ public class SessionManager {
             ByteBuffer bb = ByteBuffer.wrap(iv);
             int direction = bb.getInt();
             long counter = bb.getLong();
-            
+
+            // The direction bit exists so that two peers sharing one derived key, both counting
+            // from zero, never build the same nonce. It was written on the way out and ignored on
+            // the way in, which left the guarantee resting entirely on the sender's good
+            // behaviour - so a reflected frame, or a peer that got the bit wrong, was accepted
+            // against the same key and counter space as our own traffic.
+            //
+            // Checked before the counter is registered, deliberately. A frame that fails here has
+            // not earned a slot in the replay window, and letting it take one would let the wrong
+            // direction burn through the receive window and lock out the traffic that belongs
+            // there.
+            if (direction != expectedDirection(msg.getSenderId())) {
+                return new ProcessResult(Outcome.DROP_BAD_DIRECTION, null);
+            }
+
             if (!session.registerReceivedCounter(counter)) {
                 return new ProcessResult(Outcome.DROP_REPLAY, null);
             }
@@ -122,6 +136,17 @@ public class SessionManager {
         return new ProcessResult(Outcome.DELIVER, msg.getPayload());
     }
     
+    /**
+     * The direction bit a peer must have used on a frame sent to us.
+     *
+     * <p>The mirror of what {@code SecureChat} passes to {@link #generateIv}: the side whose id
+     * sorts lower transmits on 1, the other on 0. Derived from the two ids rather than from who
+     * started the handshake, so both ends agree without negotiating it.
+     */
+    private int expectedDirection(String senderId) {
+        return localClientId.compareTo(senderId) > 0 ? 1 : 0;
+    }
+
     /**
      * Builds the 96-bit GCM nonce as {@code [direction:4][counter:8]}.
      *

@@ -276,8 +276,8 @@ public class ClientSession implements Runnable {
                                 .setMessageId(UUID.randomUUID().toString())
                                 .setTimestamp(System.currentTimeMillis())
                                 .buildUnsigned());
-                    } else {
-                        routeFrame(message.getReceiverId(), frame);
+                    } else if (!routeFrame(message, frame)) {
+                        break;
                     }
                 } else if (message.getType() == MessageType.DISCONNECT) {
                     logger.info("disconnect: id={}", Redact.id(clientId));
@@ -296,7 +296,9 @@ public class ClientSession implements Runnable {
                         logger.warn("reject-no-handshake: ip={}", socket.getInetAddress().getHostAddress());
                         break;
                     }
-                    routeFrame(message.getReceiverId(), frame);
+                    if (!routeFrame(message, frame)) {
+                        break;
+                    }
                 }
             }
         } catch (Exception e) {
@@ -310,9 +312,45 @@ public class ClientSession implements Runnable {
         }
     }
 
-    private void routeFrame(String receiverId, byte[] frame) {
+    /**
+     * Forwards a frame to its addressee.
+     *
+     * <p>Takes the decoded message rather than just the receiver id so that the sender check below
+     * cannot be walked past: routing and the check that earns it live together, and a third call
+     * site added later gets the check whether its author thought about it or not.
+     *
+     * @return false when this connection must end, which is only ever the impersonation case. A
+     *         frame that simply cannot be delivered is not the sender's fault and returns true.
+     */
+    private boolean routeFrame(Message message, byte[] frame) {
+        // The relay never checked that a frame's sender id was the id this connection registered,
+        // so any authenticated client could put someone else's name on one and have it delivered.
+        // The recipient now verifies signatures on every inter-client frame, which is what makes
+        // that survivable rather than fatal - but "the other end will catch it" is not a reason
+        // for the relay to carry it. The one place the sender id is checkable against something
+        // real is here, where the connection that produced it is known.
+        if (!clientId.equals(message.getSenderId())) {
+            Metrics.rejectedSpoofedSender.incrementAndGet();
+            logger.warn("reject-spoofed-sender: id={} claimed={}", Redact.id(clientId),
+                    message.getSenderId() == null ? "none" : Redact.id(message.getSenderId()));
+            try {
+                sendMessage(new MessageBuilder()
+                        .setType(MessageType.ERROR)
+                        .setSenderId("SERVER")
+                        .setReceiverId(clientId)
+                        .setMessageId(UUID.randomUUID().toString())
+                        .setPayload("SENDER_MISMATCH".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                        .setTimestamp(System.currentTimeMillis())
+                        .buildUnsigned());
+            } catch (Exception e) {
+                // Ignore
+            }
+            return false;
+        }
+
+        String receiverId = message.getReceiverId();
         if (receiverId == null) {
-            return;
+            return true;
         }
 
         ClientSession receiverSession = registry.lookup(receiverId);
@@ -334,5 +372,6 @@ public class ClientSession implements Runnable {
                 // Ignore
             }
         }
+        return true;
     }
 }
