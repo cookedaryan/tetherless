@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Centred text that wraps to the width it is given.
+ * Text that wraps to the width it is given, centred or left-aligned.
  *
  * <p>{@code JLabel} can do this with HTML, and the HTML renderer's width handling is unreliable
  * enough that two attempts at it here produced text clipped mid-word instead. {@link
@@ -31,13 +31,19 @@ public class WrappedLabel extends JComponent {
     private String text;
     private float fontSize;
     private boolean secondary;
+    private boolean leftAligned;
     private int cachedWidth = -1;
     private int cachedHeight;
 
     public WrappedLabel(String text, float fontSize, boolean secondary) {
+        this(text, fontSize, secondary, false);
+    }
+
+    public WrappedLabel(String text, float fontSize, boolean secondary, boolean leftAligned) {
         this.text = text;
         this.fontSize = fontSize;
         this.secondary = secondary;
+        this.leftAligned = leftAligned;
         setOpaque(false);
     }
 
@@ -127,7 +133,7 @@ public class WrappedLabel extends JComponent {
             float y = 0;
             for (TextLayout line : lines) {
                 y += line.getAscent();
-                float x = (getWidth() - line.getAdvance()) / 2f;
+                float x = leftAligned ? 0f : (getWidth() - line.getAdvance()) / 2f;
                 line.draw(g2, x, y);
                 y += line.getDescent() + line.getLeading();
             }

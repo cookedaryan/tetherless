@@ -59,6 +59,7 @@ public class ChatClient implements MessageListener {
     private final List<Message> earlyMessageBuffer = new ArrayList<>();
 
     private volatile String localDisplayName;
+    private volatile ConnectionState connectionState = ConnectionState.DISCONNECTED;
     private String currentPeerId;
 
     public ChatClient(String clientId, KeyPair identityKey, SessionManager sessionManager,
@@ -317,9 +318,18 @@ public class ChatClient implements MessageListener {
 
     @Override
     public void onConnectionStateChanged(ConnectionState state) {
+        connectionState = state;
         for (MessageListener listener : listeners) {
             listener.onConnectionStateChanged(state);
         }
+    }
+
+    /**
+     * The last state the transport reported. Panels that describe the connection read this when
+     * they open rather than subscribing, so a sheet that is closed leaves no listener behind.
+     */
+    public ConnectionState getConnectionState() {
+        return connectionState;
     }
 
     private void notifySessionStateChanged(Session.State state) {

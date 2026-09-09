@@ -71,12 +71,17 @@ public final class SidePanel extends JPanel {
                 ? BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.divider())
                 : BorderFactory.createMatteBorder(0, 1, 0, 0, Theme.divider()));
 
-        add(buildHeader(title), BorderLayout.NORTH);
+        // A null title means the content draws its own top - the navigation drawer leads with a
+        // profile block, and a back arrow above it would be a second way to close the same sheet.
+        if (title != null) {
+            add(buildHeader(title), BorderLayout.NORTH);
+        }
     }
 
     /**
      * Slides a panel in over {@code frame}, dimming what is behind it.
      *
+     * @param title the header's label, or {@code null} for no header at all
      * @return the panel, or {@code null} if the frame has no root pane to host it
      */
     public static SidePanel open(Frame frame, Side side, int width, String title,

@@ -8,7 +8,6 @@ import com.e2eechat.desktop.ui.SidePanel;
 import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
 
-import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
@@ -19,7 +18,6 @@ import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
-import javax.swing.KeyStroke;
 import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
@@ -36,8 +34,6 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
-import java.awt.event.ActionEvent;
-import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
@@ -71,8 +67,8 @@ public class ConversationListPanel extends JLayeredPane {
     private final DefaultListModel<Conversation> model = new DefaultListModel<>();
     private final JList<Conversation> list = new JList<>(model);
     private final JTextField searchField = new JTextField();
-    private final JTextField newChatField = new JTextField();
-    private final JLabel newChatError = new JLabel(" ");
+    /** Says whether what has been pasted into search can be started, or why it cannot. */
+    private final JLabel searchHint = new JLabel(" ");
     private final IconButton composeButton;
     private final JPanel root = new JPanel(new BorderLayout());
 
@@ -89,7 +85,6 @@ public class ConversationListPanel extends JLayeredPane {
         root.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.divider()));
         root.add(buildHeader(), BorderLayout.NORTH);
         root.add(buildList(), BorderLayout.CENTER);
-        installNewChatField();
 
         composeButton = buildComposeButton();
 
@@ -121,7 +116,7 @@ public class ConversationListPanel extends JLayeredPane {
         header.setBorder(BorderFactory.createEmptyBorder(9, 10, 9, 10));
 
         IconButton menu = new IconButton(() -> TgIcons.menu(20), "Menu");
-        menu.addActionListener(e -> showMenu(menu));
+        menu.addActionListener(e -> openDrawer());
 
         IconButton themeToggle = new IconButton(
                 () -> TgIcons.themeToggle(19, Theme.isDark()),
@@ -132,6 +127,7 @@ public class ConversationListPanel extends JLayeredPane {
         searchField.setOpaque(false);
         searchField.setFont(Theme.font(Font.PLAIN, 13.5f));
         searchField.setPreferredSize(new Dimension(10, 36));
+        searchField.addActionListener(e -> startChatFromSearch());
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
@@ -173,22 +169,29 @@ public class ConversationListPanel extends JLayeredPane {
         header.add(menu, BorderLayout.WEST);
         header.add(searchWrap, BorderLayout.CENTER);
         header.add(trailing, BorderLayout.EAST);
-        header.add(buildNewChatPanel(), BorderLayout.SOUTH);
+        header.add(buildSearchHintPanel(), BorderLayout.SOUTH);
         return header;
     }
 
     /**
-     * Wraps the inline new-chat field and its error label so they sit as one row beneath the
-     * header's menu/search/theme-toggle row. Both children start invisible; {@link BorderLayout}
-     * skips invisible children when it measures preferred size, so this row costs nothing until
-     * {@link #promptNewChat()} reveals it.
+     * The single line beneath the search box that answers a pasted id.
+     *
+     * <p>There used to be a second text field here, revealed by a "New chat" command, so the
+     * sidebar had two boxes that both took a peer id and only one of them was visible at a time.
+     * Search does the job on its own now, and this row is only ever one line of text.
+     *
+     * <p>It starts invisible, and {@link BorderLayout} skips invisible children when it measures,
+     * so the row costs nothing until there is something to say.
      */
-    private JComponent buildNewChatPanel() {
-        JPanel panel = new JPanel(new BorderLayout(0, 4));
+    private JComponent buildSearchHintPanel() {
+        searchHint.setFont(Theme.font(Font.PLAIN, 11f));
+        searchHint.setForeground(Theme.textSecondary());
+        searchHint.setVisible(false);
+
+        JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
-        panel.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
-        panel.add(newChatField, BorderLayout.NORTH);
-        panel.add(newChatError, BorderLayout.SOUTH);
+        panel.setBorder(BorderFactory.createEmptyBorder(6, 2, 0, 0));
+        panel.add(searchHint, BorderLayout.CENTER);
         return panel;
     }
 
@@ -258,42 +261,55 @@ public class ConversationListPanel extends JLayeredPane {
             }
         }.withoutHoverCircle();
         button.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        button.addActionListener(e -> promptNewChat());
+        // Starting a chat means putting an id in the search box, so the compose button points at
+        // the box rather than opening a second one beside it.
+        button.addActionListener(e -> searchField.requestFocusInWindow());
         return button;
     }
 
     // ------------------------------------------------------------------ actions
 
-    private void showMenu(Component anchor) {
-        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+    private void openDrawer() {
+        openPanel(SidePanel.Side.LEFT, 320, null,
+                panel -> new NavigationDrawer(client, new NavigationDrawer.Destinations() {
+                    @Override
+                    public void profile() {
+                        openPanel(SidePanel.Side.LEFT, 380, "Profile",
+                                p -> new ProfilePanel(client));
+                    }
 
-        javax.swing.JMenuItem newChat = new javax.swing.JMenuItem("New chat…");
-        newChat.addActionListener(e -> promptNewChat());
-        menu.add(newChat);
+                    @Override
+                    public void settings() {
+                        openSettings();
+                    }
 
-        menu.addSeparator();
+                    @Override
+                    public void relay() {
+                        openPanel(SidePanel.Side.LEFT, 380, "Relay",
+                                p -> new RelayPanel(client));
+                    }
 
-        // Identity, appearance and version all moved into the settings sheet, which has the room to
-        // explain them. Night mode stays here too: it is the one setting people flip often enough
-        // to want without opening anything.
-        javax.swing.JMenuItem settings = new javax.swing.JMenuItem("Settings");
-        settings.addActionListener(e -> openSettings());
-        menu.add(settings);
+                    @Override
+                    public void about() {
+                        openPanel(SidePanel.Side.LEFT, 380, "About", p -> new AboutPanel());
+                    }
+                }));
+    }
 
-        javax.swing.JCheckBoxMenuItem night = new javax.swing.JCheckBoxMenuItem("Night mode");
-        night.setSelected(Theme.isDark());
-        night.addActionListener(e -> Theme.toggle());
-        menu.add(night);
-
-        menu.show(anchor, 0, anchor.getHeight());
+    /**
+     * Routes through the window, which owns the one open panel. Opening a destination therefore
+     * replaces the drawer rather than stacking a second sheet on top of it.
+     */
+    private void openPanel(SidePanel.Side side, int width, String title,
+                           SidePanel.ContentFactory content) {
+        java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
+        if (window instanceof ChatWindow) {
+            ((ChatWindow) window).openSidePanel(side, width, title, content);
+        }
     }
 
     private void openSettings() {
-        java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
-        if (window instanceof ChatWindow) {
-            ((ChatWindow) window).openSidePanel(SidePanel.Side.LEFT, 420, "Settings",
-                panel -> new SettingsPanel(client));
-        }
+        openPanel(SidePanel.Side.LEFT, 380, "Settings", panel -> new SettingsPanel());
     }
 
     /** The canonical id for what was typed, or null when it cannot be used. */
@@ -321,79 +337,6 @@ public class ConversationListPanel extends JLayeredPane {
             return "That is your own id.";
         }
         return null;
-    }
-
-    /**
-     * Reveals the new-chat field in the sidebar header.
-     *
-     * <p>This was a prompt dialog whose rejection opened a second dialog, so correcting a mistyped
-     * id meant dismissing a window before you could reach the box you had typed it in. The error
-     * now appears under the field, and what you typed is still there to fix.
-     */
-    private void promptNewChat() {
-        newChatField.setText("");
-        newChatError.setText(" ");
-        newChatField.setVisible(true);
-        newChatError.setVisible(true);
-        revalidate();
-        newChatField.requestFocusInWindow();
-    }
-
-    /** Builds the field once, in the sidebar header, hidden until it is wanted. */
-    private void installNewChatField() {
-        newChatField.setFont(Theme.font(Font.PLAIN, 14f));
-        newChatField.setVisible(false);
-        newChatError.setFont(Theme.font(Font.PLAIN, 11f));
-        newChatError.setForeground(Theme.danger());
-        newChatError.setVisible(false);
-
-        newChatField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                showError();
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                showError();
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                showError();
-            }
-
-            private void showError() {
-                String message = newChatError(newChatField.getText(), client.getClientId());
-                newChatError.setText(message == null ? " " : message);
-            }
-        });
-
-        newChatField.addActionListener(e -> {
-            String peerId = validateNewChatId(newChatField.getText(), client.getClientId());
-            if (peerId == null) {
-                return;
-            }
-            hideNewChatField();
-            openConversation(peerId);
-        });
-
-        newChatField.getInputMap(WHEN_IN_FOCUSED_WINDOW)
-                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "cancel-new-chat");
-        newChatField.getActionMap().put("cancel-new-chat", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                hideNewChatField();
-            }
-        });
-    }
-
-    private void hideNewChatField() {
-        newChatField.setVisible(false);
-        newChatError.setVisible(false);
-        newChatField.setText("");
-        revalidate();
-        repaint();
     }
 
     /** Selects an existing conversation or inserts a placeholder row for a brand-new peer. */
@@ -472,8 +415,8 @@ public class ConversationListPanel extends JLayeredPane {
     }
 
     private void applyFilter() {
-        String query = searchField.getText() == null
-                ? "" : searchField.getText().trim().toLowerCase(Locale.ROOT);
+        String raw = searchField.getText() == null ? "" : searchField.getText().trim();
+        String query = raw.toLowerCase(Locale.ROOT);
         model.clear();
         for (Conversation c : allConversations) {
             if (query.isEmpty()
@@ -484,7 +427,45 @@ public class ConversationListPanel extends JLayeredPane {
                 model.addElement(c);
             }
         }
+        updateSearchHint(raw);
         repaint();
+    }
+
+    /**
+     * Search doubles as the way a conversation is started: paste an id and press Enter.
+     *
+     * <p>Only says so once what is typed is actually a startable id, so the line does not sit
+     * under the box arguing with someone who is searching their existing chats.
+     */
+    private void updateSearchHint(String raw) {
+        boolean startable = model.isEmpty()
+                && validateNewChatId(raw, client.getClientId()) != null;
+        searchHint.setText(startable ? "Press Enter to start a chat with this id" : " ");
+        searchHint.setForeground(Theme.textSecondary());
+        searchHint.setVisible(startable);
+        revalidate();
+    }
+
+    /**
+     * Enter in the search box. A valid id opens the conversation; anything else says why, which is
+     * the only moment feedback is wanted - typing it out character by character would mean arguing
+     * with someone who is halfway through pasting.
+     */
+    private void startChatFromSearch() {
+        String typed = searchField.getText();
+        String peerId = validateNewChatId(typed, client.getClientId());
+        if (peerId == null) {
+            String message = newChatError(typed, client.getClientId());
+            if (message != null) {
+                searchHint.setText(message);
+                searchHint.setForeground(Theme.danger());
+                searchHint.setVisible(true);
+                revalidate();
+            }
+            return;
+        }
+        searchField.setText("");
+        openConversation(peerId);
     }
 
     /** Bumps a peer to the top with a new preview, without a full round trip to the database. */
@@ -617,17 +598,28 @@ public class ConversationListPanel extends JLayeredPane {
             int w = getWidth();
             int h = ROW_HEIGHT;
 
-            g2.setColor(selected ? Theme.sidebarSelected()
-                    : hovered ? Theme.sidebarHover() : Theme.sidebarBg());
+            g2.setColor(Theme.sidebarBg());
             g2.fillRect(0, 0, w, h);
+
+            // The open conversation is a raised card inset from the list, not a full-bleed block of
+            // colour. The shadow is what separates it from the surface rather than a border.
+            if (selected || hovered) {
+                int inset = 6;
+                int cardH = h - 8;
+                if (selected) {
+                    g2.setColor(Theme.shadow());
+                    g2.fill(new RoundRectangle2D.Double(inset, 6, w - inset * 2, cardH, 16, 16));
+                }
+                g2.setColor(selected ? Theme.sidebarSelected() : Theme.sidebarHover());
+                g2.fill(new RoundRectangle2D.Double(inset, 4, w - inset * 2, cardH, 16, 16));
+            }
 
             int avatarY = (h - AVATAR) / 2;
             Avatars.paint(g2, conversation.getPeerId(), conversation.getDisplayName(),
                     9, avatarY, AVATAR);
 
-            Color primary = selected ? Color.WHITE : Theme.textPrimary();
-            Color secondary = selected
-                    ? new Color(255, 255, 255, 205) : Theme.textSecondary();
+            Color primary = selected ? Theme.sidebarSelectedText() : Theme.textPrimary();
+            Color secondary = Theme.textSecondary();
 
             int textX = 9 + AVATAR + 11;
             int rightEdge = w - 12;
@@ -668,9 +660,9 @@ public class ConversationListPanel extends JLayeredPane {
                 int pillH = 21;
                 int pillX = rightEdge - pillW;
                 int pillY = 33;
-                g2.setColor(selected ? Color.WHITE : Theme.badge());
+                g2.setColor(Theme.badge());
                 g2.fill(new RoundRectangle2D.Double(pillX, pillY, pillW, pillH, pillH, pillH));
-                g2.setColor(selected ? Theme.sidebarSelected() : Theme.badgeText());
+                g2.setColor(Theme.badgeText());
                 g2.drawString(count, pillX + (pillW - textW) / 2,
                         pillY + (pillH - badgeFm.getHeight()) / 2 + badgeFm.getAscent());
                 previewRight = pillX - 8;
@@ -681,8 +673,7 @@ public class ConversationListPanel extends JLayeredPane {
             if (conversation.isLastFromSelf() && !conversation.getLastMessage().isEmpty()) {
                 Icon tick = conversation.getLastStatus() == ChatMessage.Status.SENT
                         ? TgIcons.check(15) : TgIcons.doubleCheck(15);
-                TgIcons.tinted(tick, selected ? Color.WHITE : Theme.tick())
-                        .paintIcon(this, g2, previewX, 36);
+                TgIcons.tinted(tick, Theme.tick()).paintIcon(this, g2, previewX, 36);
                 previewX += tick.getIconWidth() + 4;
             }
 
