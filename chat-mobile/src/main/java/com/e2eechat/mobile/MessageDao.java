@@ -23,6 +23,9 @@ public interface MessageDao {
     @Query("SELECT * FROM messages WHERE deliveryState = :state ORDER BY sentAt ASC")
     List<MessageEntity> getPendingMessages(String state);
 
+    @Query("SELECT * FROM messages WHERE id IN (SELECT MAX(id) FROM messages GROUP BY conversationId) ORDER BY sentAt DESC")
+    LiveData<List<MessageEntity>> getRecentConversations();
+
     /** Synchronous full read, used once when carrying a plaintext database into an encrypted one. */
     @Query("SELECT * FROM messages ORDER BY sentAt ASC")
     List<MessageEntity> getAllForExport();
