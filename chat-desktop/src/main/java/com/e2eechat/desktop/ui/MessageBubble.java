@@ -48,7 +48,7 @@ public class MessageBubble extends JComponent {
 
     private static final int PAD_H = 12;
     private static final int PAD_V = 7;
-    private static final int RADIUS = 13;
+    private static final int RADIUS = 16;
     private static final int TAIL_W = 7;
     private static final int META_GAP = 8;
     private static final int MAX_ABS_WIDTH = 560;

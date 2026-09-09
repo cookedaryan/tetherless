@@ -461,7 +461,7 @@ public class TranscriptPanel extends JLayeredPane {
         }
     }
 
-    /** The floating "Today" / "Yesterday" / "14 March" pill. */
+    /** The "Today" / "Yesterday" / "14 March" rule across the transcript. */
     private static class DateSeparator extends JComponent {
         private final String label;
 
@@ -495,18 +495,24 @@ public class TranscriptPanel extends JLayeredPane {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g2.setFont(Theme.font(Font.BOLD, 12f));
+            // A centred label with a hairline running out to each margin, rather than a pill: on a
+            // flat surface there is no wallpaper for a pill to float over, so it would just be a
+            // lozenge sitting on the same colour it is drawn against.
+            g2.setFont(Theme.font(Font.PLAIN, 12f));
             FontMetrics fm = g2.getFontMetrics();
             int textW = fm.stringWidth(label);
-            int pillW = textW + 24;
-            int pillH = 22;
-            int x = (getWidth() - pillW) / 2;
-            int y = (getHeight() - pillH) / 2;
+            int centreX = getWidth() / 2;
+            int baseline = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+            int lineY = getHeight() / 2;
+            int gap = 14;
+            int margin = 28;
 
-            g2.setColor(Theme.floatingPill());
-            g2.fill(new RoundRectangle2D.Double(x, y, pillW, pillH, pillH, pillH));
-            g2.setColor(Theme.floatingPillText());
-            g2.drawString(label, x + 12, y + (pillH - fm.getHeight()) / 2 + fm.getAscent());
+            g2.setColor(Theme.divider());
+            g2.drawLine(margin, lineY, centreX - textW / 2 - gap, lineY);
+            g2.drawLine(centreX + textW / 2 + gap, lineY, getWidth() - margin, lineY);
+
+            g2.setColor(Theme.textSecondary());
+            g2.drawString(label, centreX - textW / 2f, baseline);
             g2.dispose();
         }
     }

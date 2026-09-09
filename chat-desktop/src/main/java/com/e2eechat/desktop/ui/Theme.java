@@ -12,6 +12,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.prefs.Preferences;
 
+import javax.swing.JDialog;
+import javax.swing.JFrame;
 import javax.swing.UIManager;
 
 /**
@@ -79,6 +81,13 @@ public final class Theme {
      * custom-painted components still follow the palette and the application stays usable.
      */
     public static void installLookAndFeel() {
+        // Let FlatLaf draw the title bar instead of the platform. Without this the window keeps a
+        // light Windows caption above a dark application - the one strip of the window the theme
+        // could not reach. The flag is read when a frame is created, so it has to be set before
+        // the first one exists; calling it again on a theme toggle is harmless.
+        JFrame.setDefaultLookAndFeelDecorated(true);
+        JDialog.setDefaultLookAndFeelDecorated(true);
+
         try {
             UIManager.setLookAndFeel(dark ? new FlatDarkLaf() : new FlatLightLaf());
         } catch (Exception e) {
@@ -116,6 +125,15 @@ public final class Theme {
         UIManager.put("OptionPane.messageForeground", textPrimary());
         UIManager.put("Component.focusColor", accent());
         UIManager.put("Component.borderColor", divider());
+
+        // The title bar FlatLaf now draws for us, painted to match the header beneath it so the
+        // top of the window reads as one surface rather than a strip bolted above the app.
+        UIManager.put("TitlePane.unifiedBackground", true);
+        UIManager.put("TitlePane.background", headerBg());
+        UIManager.put("TitlePane.foreground", textPrimary());
+        UIManager.put("TitlePane.inactiveBackground", headerBg());
+        UIManager.put("TitlePane.inactiveForeground", textSecondary());
+        UIManager.put("TitlePane.buttonHoverBackground", sidebarHover());
     }
 
     public static void addListener(Listener l) {
@@ -160,126 +178,147 @@ public final class Theme {
         return new Color(dark ? darkRgb : lightRgb);
     }
 
+    /**
+     * The shell behind the panels. The window is a set of cards floating on this, rather than
+     * panels butted against each other, which is what gives the layout its air.
+     */
+    public static Color pageBg() {
+        return pick(0xF4F6FA, 0x0B111C);
+    }
+
     /** Sidebar / chat-list background. */
     public static Color sidebarBg() {
-        return pick(0xFFFFFF, 0x17212B);
+        return pick(0xF7F9FC, 0x121A27);
     }
 
     /** Chat-list row under the pointer. */
     public static Color sidebarHover() {
-        return pick(0xF4F4F5, 0x202B36);
+        return pick(0xEFF2F8, 0x1A2433);
     }
 
-    /** Chat-list row for the open conversation. */
+    /**
+     * Chat-list row for the open conversation - a lifted card, not a block of accent colour, so
+     * the selected row reads as raised off the list rather than painted over.
+     */
     public static Color sidebarSelected() {
-        return pick(0x419FD9, 0x2B5278);
+        return pick(0xFFFFFF, 0x223047);
+    }
+
+    /** Text on the selected row. It is no longer safe to assume white: in light mode the row is. */
+    public static Color sidebarSelectedText() {
+        return pick(0x111827, 0xFFFFFF);
+    }
+
+    /** Soft drop shadow under a raised card. */
+    public static Color shadow() {
+        return dark ? new Color(0, 0, 0, 90) : new Color(0x8A, 0x99, 0xB5, 46);
     }
 
     /** Top bar above the transcript and above the chat list. */
     public static Color headerBg() {
-        return pick(0xFFFFFF, 0x17212B);
+        return pick(0xFFFFFF, 0x121A27);
     }
 
     /** Hairline rules between panels. */
     public static Color divider() {
-        return pick(0xE4E8EB, 0x101921);
+        return pick(0xE9EDF3, 0x1F2937);
     }
 
-    /** Base colour behind the wallpaper pattern. */
+    /** The transcript surface. Flat: the reference design has no wallpaper behind the bubbles. */
     public static Color chatBg() {
-        return pick(0xD5DBE3, 0x0E1621);
+        return pick(0xFFFFFF, 0x0E1622);
     }
 
-    /** Wallpaper pattern ink, drawn at low alpha over {@link #chatBg()}. */
+    /** Kept equal to {@link #chatBg()} so the old pattern renders as nothing. */
     public static Color chatPattern() {
-        return pick(0xC2CBD6, 0x131E29);
+        return chatBg();
     }
 
     public static Color bubbleIn() {
-        return pick(0xFFFFFF, 0x182533);
+        return pick(0xF1F4F9, 0x1C2634);
     }
 
     public static Color bubbleOut() {
-        return pick(0xEFFDDE, 0x2B5278);
+        return pick(0xD9E6FE, 0x2B4B7D);
     }
 
     /** Bubble background for a message that failed authentication or decryption. */
     public static Color bubbleError() {
-        return pick(0xFBE3E3, 0x4A2226);
+        return pick(0xFDE8E8, 0x4A2226);
     }
 
     public static Color textPrimary() {
-        return pick(0x000000, 0xFFFFFF);
+        return pick(0x111827, 0xE9EEF6);
     }
 
     public static Color textSecondary() {
-        return pick(0x707579, 0x7D8B99);
+        return pick(0x8B95A7, 0x8B95A7);
     }
 
     /** Timestamp inside an incoming bubble. */
     public static Color timeIn() {
-        return pick(0xA1AAB3, 0x6D7F8F);
+        return pick(0x9AA4B5, 0x71809A);
     }
 
     /** Timestamp inside an outgoing bubble. */
     public static Color timeOut() {
-        return pick(0x62B25A, 0x8DA5BF);
+        return pick(0x6B8FCB, 0x9DB8E0);
     }
 
     /** Delivery ticks inside an outgoing bubble. */
     public static Color tick() {
-        return pick(0x5DC452, 0x72A6D8);
+        return pick(0x2F6FED, 0x63A0F5);
     }
 
     /** Accent used for buttons, links, badges and the secure-session indicator. */
     public static Color accent() {
-        return pick(0x3390EC, 0x64B5EF);
+        return pick(0x1668FF, 0x4D8DFF);
     }
 
     public static Color accentHover() {
-        return pick(0x2B82D9, 0x529BDB);
+        return pick(0x0D57DB, 0x3D7AE8);
     }
 
-    /** Unread-count pill on an unmuted chat. */
+    /** Unread-count pill. Coral rather than accent, so an unread count is not another blue. */
     public static Color badge() {
-        return pick(0x3390EC, 0x64B5EF);
+        return pick(0xF4756B, 0xF4756B);
     }
 
     public static Color badgeText() {
-        return pick(0xFFFFFF, 0x17212B);
+        return pick(0xFFFFFF, 0xFFFFFF);
     }
 
     /** Fill behind the search box and other inset controls. */
     public static Color inputBg() {
-        return pick(0xF1F1F1, 0x242F3D);
+        return pick(0xF1F4F9, 0x1A2433);
     }
 
     /** Fill behind the message composer. */
     public static Color composerBg() {
-        return pick(0xFFFFFF, 0x17212B);
+        return pick(0xFFFFFF, 0x121A27);
     }
 
     /** Icon glyphs in their resting state. */
     public static Color icon() {
-        return pick(0x707579, 0x7D8B99);
+        return pick(0x8B95A7, 0x8B95A7);
     }
 
     public static Color iconHover() {
-        return pick(0x3E4144, 0xB6C2CE);
+        return pick(0x4B5568, 0xC3CCDA);
     }
 
-    /** Floating pill used for date separators and the "unread messages" rule. */
+    /** Date separators. Quiet text on the transcript, not a pill floating over a wallpaper. */
     public static Color floatingPill() {
-        return dark ? new Color(0x18, 0x25, 0x33, 0xCC) : new Color(0x00, 0x00, 0x00, 0x40);
+        return dark ? new Color(0x1C, 0x26, 0x34, 0xFF) : new Color(0xF1, 0xF4, 0xF9, 0xFF);
     }
 
     public static Color floatingPillText() {
-        return Color.WHITE;
+        return textSecondary();
     }
 
     /** Warning red for key-change and decryption-failure notices. */
     public static Color danger() {
-        return pick(0xE53935, 0xEF5350);
+        return pick(0xE5484D, 0xEF5350);
     }
 
     // ------------------------------------------------------------- typography
