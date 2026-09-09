@@ -49,14 +49,16 @@ public class ChatServer {
         this.config = cfg;
         this.registry = new ClientRegistry();
         this.executorService = Executors.newFixedThreadPool(config.getMaxConnections() * 2);
-        this.metricsServer = new MetricsServer(port == 0 ? 0 : port + 1);
+        this.metricsServer = new MetricsServer(port == 0 ? 0 : port + 1, cfg.getMetricsHost());
     }
     
     public ChatServer(ServerConfig config) {
         this.config = config;
         this.registry = new ClientRegistry();
         this.executorService = Executors.newFixedThreadPool(config.getMaxConnections() * 2);
-        this.metricsServer = new MetricsServer(config.getPort() == 0 ? 0 : config.getPort() + 1);
+        this.metricsServer =
+                new MetricsServer(config.getPort() == 0 ? 0 : config.getPort() + 1,
+                        config.getMetricsHost());
     }
 
     private ServerSocket createSSLServerSocket() throws Exception {

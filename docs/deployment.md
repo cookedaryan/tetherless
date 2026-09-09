@@ -140,8 +140,17 @@ in front, or use socket activation, so the JVM never runs privileged.
 ### The metrics endpoint
 
 The relay exposes Prometheus-style counters on **`PORT + 1`** at `/metrics`. It is unauthenticated
-plaintext HTTP and must not be reachable from the internet. The compose file binds it to loopback;
-a systemd or bare-metal deployment needs a firewall rule.
+plaintext HTTP and must not be reachable from the internet.
+
+**The relay binds it to `127.0.0.1` itself**, so a deployment that forgets a firewall rule is not
+publishing it. That used to depend entirely on what was in front of the process: the endpoint was
+bound to the wildcard address, so a bare-metal relay with no rule in place served its client count,
+routed-message totals and rejection counters to anyone who asked.
+
+To scrape it from another host, set `server.metrics_host` (or `METRICS_HOST`) and put
+authentication in front of it — a reverse proxy, or a private network interface. The relay logs a
+warning at startup whenever that setting is not loopback, because the endpoint has no
+authentication of its own.
 
 ## 4. Give clients the certificate to pin
 

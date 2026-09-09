@@ -293,6 +293,43 @@ public class JceKeyStoreManagerTest {
         assertTrue(new JceKeyStoreManager(dir).getPeerKey(PeerId.of(peer)).isPresent());
     }
 
+    /**
+     * The identity keystore and the peer store must not be readable by other local accounts.
+     *
+     * <p>They were written with the process umask, which on a typical account leaves them
+     * world-readable: any other user on the machine could take the encrypted keystore away and
+     * attack the passphrase offline, and read the peer store to learn the whole contact list.
+     * Neither file is covered by the end-to-end encryption; both sit outside it, on disk.
+     */
+    @Test
+    public void keyMaterialIsNotReadableByOtherLocalAccounts() throws Exception {
+        org.junit.Assume.assumeTrue("POSIX permissions unsupported here",
+                java.nio.file.FileSystems.getDefault()
+                        .supportedFileAttributeViews().contains("posix"));
+
+        File dir = tmp.newFolder("permissions");
+        JceKeyStoreManager manager = new JceKeyStoreManager(dir);
+        manager.loadOrCreateIdentity(PASSPHRASE);
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        PublicKey peer = generator.generateKeyPair().getPublic();
+        manager.storePeerKey(PeerId.of(peer), peer);
+
+        assertOwnerOnly(new File(dir, "identity.p12"));
+        assertOwnerOnly(new File(dir, "peers.properties"));
+    }
+
+    private static void assertOwnerOnly(File file) throws Exception {
+        assertTrue(file + " should exist", file.isFile());
+        java.util.Set<java.nio.file.attribute.PosixFilePermission> mode =
+                java.nio.file.Files.getPosixFilePermissions(file.toPath());
+        assertFalse(file.getName() + " is group readable",
+                mode.contains(java.nio.file.attribute.PosixFilePermission.GROUP_READ));
+        assertFalse(file.getName() + " is world readable",
+                mode.contains(java.nio.file.attribute.PosixFilePermission.OTHERS_READ));
+    }
+
     @Test
     public void aFingerprintIsStableAndKeySpecific() throws Exception {
         JceKeyStoreManager keyStore = new JceKeyStoreManager(home);

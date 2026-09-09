@@ -1,5 +1,6 @@
 package com.e2eechat.core.keys;
 
+import com.e2eechat.core.util.PrivateFiles;
 import com.e2eechat.core.util.Redact;
 
 import org.slf4j.Logger;
@@ -142,10 +143,10 @@ public class JceKeyStoreManager implements IdentityKeyStore {
      * <p>The keystore format is unchanged, so an identity created by the old path still opens.
      */
     private void createIdentity(File ksFile, char[] passphrase) throws Exception {
-        File parent = ksFile.getParentFile();
-        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-            throw new IOException("Could not create the configuration directory at " + parent);
-        }
+        // Owner-only, and the directory before the file: this holds the private identity key, and
+        // a default umask on a shared machine makes it world-readable - which hands every other
+        // local account an encrypted keystore to attack the passphrase on at leisure.
+        PrivateFiles.createPrivateDirectory(ksFile.getParentFile());
 
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(IDENTITY_KEY_BITS);
@@ -159,6 +160,7 @@ public class JceKeyStoreManager implements IdentityKeyStore {
         try (FileOutputStream out = new FileOutputStream(ksFile)) {
             ks.store(out, passphrase);
         }
+        PrivateFiles.restrict(ksFile);
         LOG.info("Created a new identity key at {}", ksFile.getAbsolutePath());
     }
 
@@ -177,6 +179,12 @@ public class JceKeyStoreManager implements IdentityKeyStore {
         peerProperties.setProperty(peerId, b64);
 
         File temporary = new File(peersFile.getParentFile(), peersFile.getName() + ".tmp");
+        // Created private before anything is written to it, so the contents are never briefly
+        // readable; a move preserves the mode, so the live file inherits it.
+        java.nio.file.Files.deleteIfExists(temporary.toPath());
+        java.nio.file.Files.createFile(temporary.toPath(),
+                PrivateFiles.ownerOnlyFileAttributes());
+        PrivateFiles.restrict(temporary);
         try (FileOutputStream fos = new FileOutputStream(temporary)) {
             peerProperties.store(fos, "Tetherless Peer Public Keys");
             fos.flush();
@@ -188,6 +196,7 @@ public class JceKeyStoreManager implements IdentityKeyStore {
         try {
             Files.move(temporary.toPath(), peersFile.toPath(),
                     StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            PrivateFiles.restrict(peersFile);
         } catch (AtomicMoveNotSupportedException e) {
             // Some filesystems cannot promise it. A replacing move is still better than writing
             // over the live file, which is the failure this is here to avoid.
@@ -195,6 +204,7 @@ public class JceKeyStoreManager implements IdentityKeyStore {
                     peersFile.getAbsolutePath());
             Files.move(temporary.toPath(), peersFile.toPath(),
                     StandardCopyOption.REPLACE_EXISTING);
+            PrivateFiles.restrict(peersFile);
         }
     }
     

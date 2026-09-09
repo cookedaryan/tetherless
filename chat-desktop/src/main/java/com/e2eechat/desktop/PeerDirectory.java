@@ -149,6 +149,7 @@ public class PeerDirectory {
         }
         try (FileOutputStream out = new FileOutputStream(verifiedFile)) {
             props.store(out, "Peers whose safety number this user has compared and accepted.");
+            com.e2eechat.core.util.PrivateFiles.restrict(verifiedFile);
         } catch (Exception e) {
             logger.error("Could not persist peer verification to {}", verifiedFile, e);
         }
@@ -159,6 +160,9 @@ public class PeerDirectory {
         props.putAll(names);
         try (FileOutputStream out = new FileOutputStream(file)) {
             props.store(out, "Display names peers have asked to be shown as. Self-asserted; not proof of identity.");
+            // Owner-only: this and the verification list together are the user's contact graph,
+            // which sits on disk outside anything the end-to-end encryption protects.
+            com.e2eechat.core.util.PrivateFiles.restrict(file);
         } catch (Exception e) {
             logger.error("Could not persist peer names to {}", file, e);
         }

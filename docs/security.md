@@ -334,6 +334,12 @@ which is a real limitation regardless of how thorough they are.
 - **Android:** identity generated in `AndroidKeyStore`, hardware-backed where available. The private
   key is **non-exportable**, so it cannot be extracted — and equally cannot be backed up.
   Uninstalling the app destroys the identity permanently, and every contact will see a key change.
+- **On-disk permissions:** the identity keystore, the pinned peer keys, and the directory holding
+  them are created owner-only (`0600` / `0700`) wherever the filesystem supports it. They used to
+  be written with the process umask, which on a typical account is world-readable — handing any
+  other local user the encrypted keystore to attack the passphrase on offline, and the peer store
+  as a contact list. Windows has no equivalent mode; there the client falls back to what the
+  platform can express, which is weaker.
 - **Session keys:** memory only, never written to disk, discarded on restart. They are held as
   `SecretKeySpec`, which the JDK does not let you zero, so a session key stays in the heap until
   garbage collection reclaims it. Passphrases *are* zeroed once the keys they derive exist. No

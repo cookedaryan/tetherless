@@ -19,6 +19,18 @@ public class ServerConfig {
     private int rateLimitBurst = 50;
     private int rateLimitRefillSec = 20;
     private int handshakeTimeoutMs = 10000;
+
+    /**
+     * Interface the metrics endpoint listens on.
+     *
+     * <p>Loopback, because {@code /metrics} is unauthenticated plain HTTP. It used to bind the
+     * wildcard address, so a relay on a public host with no firewall in front of it published its
+     * client count, routed-message totals and rejection counters to anyone who asked - a live read
+     * on who is using the service and how much, from the one component that is meant to learn as
+     * little as possible. An operator who wants it reachable can say so; nobody should get that by
+     * default for forgetting to close a port.
+     */
+    private String metricsHost = "127.0.0.1";
     
     // TLS
     static final String DEFAULT_KEYSTORE_PATH = "dev-keystore.p12";
@@ -49,6 +61,7 @@ public class ServerConfig {
         rateLimitBurst = getInt(props, "server.rate_limit_burst", "RATE_LIMIT_BURST", rateLimitBurst);
         rateLimitRefillSec = getInt(props, "server.rate_limit_refill_sec", "RATE_LIMIT_REFILL_SEC", rateLimitRefillSec);
         handshakeTimeoutMs = getInt(props, "server.handshake_timeout_ms", "HANDSHAKE_TIMEOUT_MS", handshakeTimeoutMs);
+        metricsHost = getString(props, "server.metrics_host", "METRICS_HOST", metricsHost);
         
         String configuredPath = getString(props, "server.keystore_path", "KEYSTORE_PATH", null);
         if (configuredPath != null) {
@@ -110,9 +123,11 @@ public class ServerConfig {
     public int getRateLimitBurst() { return rateLimitBurst; }
     public int getRateLimitRefillSec() { return rateLimitRefillSec; }
     public int getHandshakeTimeoutMs() { return handshakeTimeoutMs; }
+    public String getMetricsHost() { return metricsHost; }
 
     // Setters for tests
     public void setPort(int port) { this.port = port; }
+    public void setMetricsHost(String metricsHost) { this.metricsHost = metricsHost; }
     public void setMaxConnections(int max) { this.maxConnections = max; }
     public void setMaxConnectionsPerIp(int max) { this.maxConnectionsPerIp = max; }
     public void setRateLimitBurst(int burst) { this.rateLimitBurst = burst; }

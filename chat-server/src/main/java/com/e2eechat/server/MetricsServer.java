@@ -8,27 +8,54 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 
 public class MetricsServer {
     private static final Logger logger = LoggerFactory.getLogger(MetricsServer.class);
     
+    /** Where an unconfigured relay listens. See {@link ServerConfig#getMetricsHost()}. */
+    static final String DEFAULT_HOST = "127.0.0.1";
+
     private HttpServer server;
     private final int port;
+    private final String host;
 
     public MetricsServer(int port) {
-        this.port = port;
+        this(port, DEFAULT_HOST);
     }
 
+    public MetricsServer(int port, String host) {
+        this.port = port;
+        this.host = host == null || host.isEmpty() ? DEFAULT_HOST : host;
+    }
+
+    /**
+     * Starts the endpoint on the configured interface.
+     *
+     * <p>Bound explicitly rather than by passing a bare port, which is the wildcard address and
+     * meant {@code /metrics} was served on every interface the host had. There is no
+     * authentication on it, so on a public relay that was operational telemetry - active clients,
+     * messages routed, buffer overflows - published to anyone who connected.
+     */
     public void start() {
         try {
-            server = HttpServer.create(new InetSocketAddress(port), 0);
+            InetSocketAddress address = new InetSocketAddress(InetAddress.getByName(host), port);
+            server = HttpServer.create(address, 0);
             server.createContext("/metrics", new MetricsHandler());
             server.setExecutor(null); // creates a default executor
             server.start();
-            logger.info("Metrics server started on port {}", port);
+            if (!DEFAULT_HOST.equals(host) && !"localhost".equals(host)) {
+                logger.warn("Metrics endpoint is bound to {}, not loopback. /metrics is "
+                        + "unauthenticated: anything that can reach {}:{} can read this relay's "
+                        + "traffic counters.", host, host, server.getAddress().getPort());
+            }
+            logger.info("Metrics server started on {}:{}", host, server.getAddress().getPort());
+        } catch (UnknownHostException e) {
+            logger.error("Metrics host {} could not be resolved; endpoint not started", host, e);
         } catch (IOException e) {
-            logger.error("Failed to start metrics server on port {}", port, e);
+            logger.error("Failed to start metrics server on {}:{}", host, port, e);
         }
     }
 
