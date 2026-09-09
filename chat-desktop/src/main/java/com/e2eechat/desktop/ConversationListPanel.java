@@ -46,6 +46,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -62,7 +63,11 @@ public class ConversationListPanel extends JLayeredPane {
     private static final int AVATAR = 54;
 
     private final ChatClient client;
+    private final ConversationStore conversations;
     private final Consumer<String> onConversationSelected;
+
+    /** Which shelf the list is showing. Archived chats are out of the way, not gone. */
+    private boolean showingArchived;
 
     private final DefaultListModel<Conversation> model = new DefaultListModel<>();
     private final JList<Conversation> list = new JList<>(model);
@@ -71,12 +76,15 @@ public class ConversationListPanel extends JLayeredPane {
     private final JLabel searchHint = new JLabel(" ");
     private final IconButton composeButton;
     private final JPanel root = new JPanel(new BorderLayout());
+    private final ShelfTabs tabs = new ShelfTabs();
 
     /** Full, unfiltered set; {@link #model} holds whatever the current search leaves visible. */
     private final List<Conversation> allConversations = new ArrayList<>();
 
-    public ConversationListPanel(ChatClient client, Consumer<String> onConversationSelected) {
+    public ConversationListPanel(ChatClient client, ConversationStore conversations,
+                                 Consumer<String> onConversationSelected) {
         this.client = client;
+        this.conversations = conversations;
         this.onConversationSelected = onConversationSelected;
 
         setPreferredSize(new Dimension(320, 0));
@@ -191,8 +199,89 @@ public class ConversationListPanel extends JLayeredPane {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
         panel.setBorder(BorderFactory.createEmptyBorder(6, 2, 0, 0));
-        panel.add(searchHint, BorderLayout.CENTER);
+        panel.add(searchHint, BorderLayout.NORTH);
+        panel.add(tabs, BorderLayout.CENTER);
         return panel;
+    }
+
+    /**
+     * Shows the Open/Archived switch only once something has been archived.
+     *
+     * <p>A shelf nobody has put anything on is a control that can only disappoint, so it stays out
+     * of the way until it has a job. Unarchiving the last chat takes the switch away with it, and
+     * puts the list back on Open so the user is not left looking at an empty shelf.
+     */
+    private void updateTabs() {
+        boolean anyArchived = false;
+        for (Conversation c : allConversations) {
+            if (c.isArchived()) {
+                anyArchived = true;
+                break;
+            }
+        }
+        if (!anyArchived && showingArchived) {
+            showingArchived = false;
+            applyFilter();
+            return;
+        }
+        tabs.setVisible(anyArchived);
+        tabs.repaint();
+        revalidate();
+    }
+
+    /** Two segments, painted rather than assembled, to match the rest of the sidebar. */
+    private class ShelfTabs extends JComponent {
+
+        ShelfTabs() {
+            setVisible(false);
+            setCursor(new Cursor(Cursor.HAND_CURSOR));
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseReleased(MouseEvent e) {
+                    boolean archived = e.getX() > getWidth() / 2;
+                    if (archived != showingArchived) {
+                        showingArchived = archived;
+                        list.clearSelection();
+                        applyFilter();
+                    }
+                }
+            });
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(10, isVisible() ? 38 : 0);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = 30;
+            g2.setColor(Theme.inputBg());
+            g2.fill(new RoundRectangle2D.Double(0, 4, w, h, 10, 10));
+
+            int half = w / 2;
+            g2.setColor(Theme.sidebarSelected());
+            g2.fill(new RoundRectangle2D.Double(showingArchived ? half : 0, 4, half, h, 10, 10));
+
+            g2.setFont(Theme.font(Font.BOLD, 12.5f));
+            FontMetrics fm = g2.getFontMetrics();
+            int baseline = 4 + (h - fm.getHeight()) / 2 + fm.getAscent();
+            drawSegment(g2, fm, "Open", 0, half, baseline, !showingArchived);
+            drawSegment(g2, fm, "Archived", half, half, baseline, showingArchived);
+            g2.dispose();
+        }
+
+        private void drawSegment(Graphics2D g2, FontMetrics fm, String label, int x, int width,
+                                 int baseline, boolean active) {
+            g2.setColor(active ? Theme.textPrimary() : Theme.textSecondary());
+            g2.drawString(label, x + (width - fm.stringWidth(label)) / 2f, baseline);
+        }
     }
 
     private JComponent buildList() {
@@ -229,6 +318,29 @@ public class ConversationListPanel extends JLayeredPane {
             public void mouseExited(MouseEvent e) {
                 hoverIndex = -1;
                 list.repaint();
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowMenu(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowMenu(e);
+            }
+
+            // Checked on both press and release: which one carries the trigger is
+            // platform-dependent, and Windows raises it on release.
+            private void maybeShowMenu(MouseEvent e) {
+                if (!e.isPopupTrigger()) {
+                    return;
+                }
+                int index = list.locationToIndex(e.getPoint());
+                if (index < 0 || !list.getCellBounds(index, index).contains(e.getPoint())) {
+                    return;
+                }
+                showConversationMenu(model.getElementAt(index), e.getX(), e.getY());
             }
         });
 
@@ -268,6 +380,79 @@ public class ConversationListPanel extends JLayeredPane {
     }
 
     // ------------------------------------------------------------------ actions
+
+    /**
+     * The per-conversation menu: pin, mute, archive, and delete.
+     *
+     * <p>Delete asks first and says what it does not do. The relay stores nothing and the protocol
+     * has no way to retract a message, so deleting here removes this machine's copy and only this
+     * machine's copy - promising anything more would be a lie the peer's transcript exposes.
+     */
+    private void showConversationMenu(Conversation conversation, int x, int y) {
+        String peerId = conversation.getPeerId();
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+
+        javax.swing.JMenuItem pin = new javax.swing.JMenuItem(
+                conversation.isPinned() ? "Unpin" : "Pin to top");
+        pin.addActionListener(e -> {
+            conversations.setPinned(peerId, !conversation.isPinned());
+            reload();
+        });
+        menu.add(pin);
+
+        javax.swing.JMenuItem mute = new javax.swing.JMenuItem(
+                conversation.isMuted() ? "Unmute" : "Mute notifications");
+        mute.addActionListener(e -> {
+            conversations.setMuted(peerId, !conversation.isMuted());
+            reload();
+        });
+        menu.add(mute);
+
+        javax.swing.JMenuItem archive = new javax.swing.JMenuItem(
+                conversation.isArchived() ? "Move to Open" : "Archive");
+        archive.addActionListener(e -> {
+            conversations.setArchived(peerId, !conversation.isArchived());
+            reload();
+        });
+        menu.add(archive);
+
+        menu.addSeparator();
+
+        javax.swing.JMenuItem delete = new javax.swing.JMenuItem("Delete conversation…");
+        delete.addActionListener(e -> confirmDelete(conversation));
+        menu.add(delete);
+
+        menu.show(list, x, y);
+    }
+
+    private void confirmDelete(Conversation conversation) {
+        int answer = javax.swing.JOptionPane.showConfirmDialog(this,
+                "Delete every message with " + conversation.getDisplayName() + " from this "
+                        + "computer?\n\nThis cannot be undone. Their copy is unaffected - nothing "
+                        + "is sent, and this protocol cannot ask anyone else to forget a message.",
+                "Delete conversation",
+                javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                javax.swing.JOptionPane.WARNING_MESSAGE);
+        if (answer != javax.swing.JOptionPane.OK_OPTION) {
+            return;
+        }
+        String peerId = conversation.getPeerId();
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() {
+                client.getMessageRepository().deleteConversation(client.getClientId(), peerId);
+                conversations.clear(peerId);
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                allConversations.removeIf(c -> c.getPeerId().equals(peerId));
+                list.clearSelection();
+                reload();
+            }
+        }.execute();
+    }
 
     private void openDrawer() {
         openPanel(SidePanel.Side.LEFT, 320, null,
@@ -376,8 +561,13 @@ public class ConversationListPanel extends JLayeredPane {
                 : null;
 
         new SwingWorker<List<Conversation>, Void>() {
+            private Map<String, ConversationStore.State> states;
+
             @Override
             protected List<Conversation> doInBackground() {
+                // Both queries off the event thread, and the state in one go rather than a lookup
+                // per row.
+                states = conversations.loadAll();
                 return client.getMessageRepository().getConversations(client.getClientId());
             }
 
@@ -389,6 +579,8 @@ public class ConversationListPanel extends JLayeredPane {
                     for (Conversation c : loaded) {
                         c.setDisplayName(client.displayNameFor(c.getPeerId()));
                         c.setVerified(client.getPeerDirectory().isVerified(c.getPeerId()));
+                        c.applyState(states.getOrDefault(c.getPeerId(),
+                                new ConversationStore.State(false, false, false)));
                     }
                     // Keep any placeholder rows for peers with no messages yet.
                     for (Conversation existing : allConversations) {
@@ -417,16 +609,35 @@ public class ConversationListPanel extends JLayeredPane {
     private void applyFilter() {
         String raw = searchField.getText() == null ? "" : searchField.getText().trim();
         String query = raw.toLowerCase(Locale.ROOT);
-        model.clear();
+
+        List<Conversation> visible = new ArrayList<>();
         for (Conversation c : allConversations) {
+            if (c.isArchived() != showingArchived) {
+                continue;
+            }
             if (query.isEmpty()
                     || c.getDisplayName().toLowerCase(Locale.ROOT).contains(query)
                     || c.getPeerId().toLowerCase(Locale.ROOT).contains(query)
                     || (c.getLastMessage() != null
                         && c.getLastMessage().toLowerCase(Locale.ROOT).contains(query))) {
-                model.addElement(c);
+                visible.add(c);
             }
         }
+
+        // Pinned first, then most recent. The repository already returns newest-first, so this
+        // only has to lift the pinned ones out without disturbing the rest.
+        visible.sort((a, b) -> {
+            if (a.isPinned() != b.isPinned()) {
+                return a.isPinned() ? -1 : 1;
+            }
+            return Long.compare(b.getLastTimestamp(), a.getLastTimestamp());
+        });
+
+        model.clear();
+        for (Conversation c : visible) {
+            model.addElement(c);
+        }
+        updateTabs();
         updateSearchHint(raw);
         repaint();
     }

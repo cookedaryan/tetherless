@@ -59,6 +59,16 @@ public class DatabaseHelper {
                 stmt.execute("ALTER TABLE messages ADD COLUMN reply_to_preview TEXT");
             }
 
+            // Per-conversation choices that are this user's alone: nothing here is sent, and the
+            // peer cannot tell they have been muted or archived. Keyed by peer rather than joined
+            // to messages so a conversation keeps its place after its history is cleared.
+            stmt.execute("CREATE TABLE IF NOT EXISTS conversation_state (\n"
+                    + " peer TEXT PRIMARY KEY,\n"
+                    + " pinned INTEGER NOT NULL DEFAULT 0,\n"
+                    + " muted INTEGER NOT NULL DEFAULT 0,\n"
+                    + " archived INTEGER NOT NULL DEFAULT 0\n"
+                    + ");");
+
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_messages_participants "
                     + "ON messages(sender, receiver);");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp "

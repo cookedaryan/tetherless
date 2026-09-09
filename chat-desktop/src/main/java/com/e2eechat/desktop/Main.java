@@ -177,7 +177,8 @@ public class Main {
             ChatClient client = new ChatClient(clientId, identity, sessionManager, messageRepository,
                     keyStoreManager, peerDirectory, displayName);
             
-            ChatWindow window = new ChatWindow(client, fingerprint);
+            ChatWindow window = new ChatWindow(client, fingerprint,
+                    new ConversationStore(dbPath));
             
             window.addWindowListener(new WindowAdapter() {
                 @Override

@@ -56,6 +56,7 @@ public class ChatWindow extends JFrame
     private final String ownFingerprint;
 
     private final ConversationListPanel sidebar;
+    private final ConversationStore conversations;
     private final Notifier notifier;
     /** The window's size and position while not maximised, so un-maximising has somewhere to go. */
     private Rectangle normalBounds;
@@ -72,16 +73,17 @@ public class ChatWindow extends JFrame
     /** The panel currently open over the window, if any. Only one at a time. */
     private SidePanel openPanel;
 
-    public ChatWindow(ChatClient client, String fingerprint) {
+    public ChatWindow(ChatClient client, String fingerprint, ConversationStore conversations) {
         this.client = client;
         this.ownFingerprint = fingerprint;
+        this.conversations = conversations;
 
         setTitle("Tetherless");
         setMinimumSize(new Dimension(760, 520));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         restoreBounds();
 
-        sidebar = new ConversationListPanel(client, this::onConversationSelected);
+        sidebar = new ConversationListPanel(client, conversations, this::onConversationSelected);
         header = new ChatHeader();
         composer = new Composer();
 
@@ -339,12 +341,16 @@ public class ChatWindow extends JFrame
 
         sidebar.notePreview(msg.getSenderId(), text, msg.getTimestamp(), false, !current);
 
-        // Silent when the window is focused - the notifier decides that, since "did the user see
-        // it" is about the window, not about which conversation is open.
-        notifier.messageArrived(displayNameOf(msg.getSenderId()), text);
-        if (isActive() && !current) {
-            // Audible cue for a chat the user is not currently looking at.
-            java.awt.Toolkit.getDefaultToolkit().beep();
+        // Muted means no notification and no beep, but the unread count still moves: muting is
+        // about not being interrupted, not about pretending nothing arrived.
+        if (!conversations.get(msg.getSenderId()).muted) {
+            // Silent when the window is focused - the notifier decides that, since "did the user
+            // see it" is about the window, not about which conversation is open.
+            notifier.messageArrived(displayNameOf(msg.getSenderId()), text);
+            if (isActive() && !current) {
+                // Audible cue for a chat the user is not currently looking at.
+                java.awt.Toolkit.getDefaultToolkit().beep();
+            }
         }
     }
 

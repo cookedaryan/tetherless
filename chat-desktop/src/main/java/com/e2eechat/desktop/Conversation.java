@@ -20,6 +20,9 @@ public class Conversation {
     private int unreadCount;
     private boolean online;
     private boolean verified;
+    private boolean pinned;
+    private boolean muted;
+    private boolean archived;
 
     public Conversation(String peerId, String lastMessage, long lastTimestamp,
                         boolean lastFromSelf, ChatMessage.Status lastStatus, int unreadCount) {
@@ -97,5 +100,27 @@ public class Conversation {
 
     public void setVerified(boolean verified) {
         this.verified = verified;
+    }
+
+    /** Held at the top of the list, above everything else regardless of recency. */
+    public boolean isPinned() {
+        return pinned;
+    }
+
+    /** Still counted as unread, but never allowed to raise a notification. */
+    public boolean isMuted() {
+        return muted;
+    }
+
+    /** Filed out of the main list. The history is untouched. */
+    public boolean isArchived() {
+        return archived;
+    }
+
+    /** Applies this user's local choices, loaded by the chat list from {@link ConversationStore}. */
+    public void applyState(ConversationStore.State state) {
+        this.pinned = state.pinned;
+        this.muted = state.muted;
+        this.archived = state.archived;
     }
 }

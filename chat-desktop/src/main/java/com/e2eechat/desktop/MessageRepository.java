@@ -186,6 +186,30 @@ public class MessageRepository {
         return messages;
     }
 
+    /**
+     * Removes every message exchanged with a peer.
+     *
+     * <p>Local only, and irreversible. The peer keeps their copy: nothing is sent, because this
+     * protocol has no way to ask someone else to forget something.
+     *
+     * @return how many rows went
+     */
+    public int deleteConversation(String self, String peerId) {
+        String sql = "DELETE FROM messages "
+                + "WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)";
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, self);
+            pstmt.setString(2, peerId);
+            pstmt.setString(3, peerId);
+            pstmt.setString(4, self);
+            return pstmt.executeUpdate();
+        } catch (Exception e) {
+            logger.error("Failed to delete conversation", e);
+            return 0;
+        }
+    }
+
     /** Every peer this user has something queued for, so a reconnect can drain the lot. */
     public List<String> getPendingPeers(String self) {
         String sql = "SELECT DISTINCT receiver FROM messages "
