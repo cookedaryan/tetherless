@@ -106,7 +106,11 @@ public class TranscriptPanel extends JLayeredPane {
         add(jumpToLatest, JLayeredPane.PALETTE_LAYER);
 
         scroll.getVerticalScrollBar().addAdjustmentListener(e -> updateJumpButton());
-        Theme.addListener(this::repaintAll);
+        // Not addListener: the static list lives for the life of the process, and ChatWindow
+        // builds a fresh transcript on every conversation switch - so every panel it replaced,
+        // and the whole message list behind it, was retained forever and repainted on every
+        // toggle. follow() drops the registration when the panel leaves the window.
+        Theme.follow(this, this::repaintAll);
     }
 
     /** Registers the callback fired when the user picks "Reply" from a bubble's context menu. */
@@ -264,15 +268,55 @@ public class TranscriptPanel extends JLayeredPane {
         column.add(row, index);
     }
 
-    /** Marks the newest outgoing message with {@code messageId} as reaching {@code status}. */
+    /**
+     * Marks the newest outgoing message with {@code messageId} as reaching {@code status}.
+     *
+     * <p>A tick only ever moves forward. {@code ChatClient} re-acknowledges on every read receipt
+     * and the relay is expected to redeliver, so a {@code DELIVERY_ACK} can arrive after a read
+     * receipt has already been applied - and setting it unconditionally pulled the bubble back
+     * from a filled double tick to a plain one, which the sender reads as the peer un-reading
+     * their message. {@code markAllRead} just below already guarded its own transition.
+     */
     public void updateStatus(String messageId, ChatMessage.Status status) {
         for (int i = messages.size() - 1; i >= 0; i--) {
             ChatMessage m = messages.get(i);
             if (messageId.equals(m.getMessageId())) {
+                if (isRegression(m.getStatus(), status)) {
+                    return;
+                }
                 m.setStatus(status);
                 repaint();
                 return;
             }
+        }
+    }
+
+    /**
+     * Whether moving from {@code from} to {@code to} would walk back down the delivery ladder.
+     *
+     * <p>Only PENDING → SENT → DELIVERED → READ is ordered. FAILED is not on that ladder at all,
+     * so nothing involving it is a regression: a message that failed and later goes out has to be
+     * able to become SENT again, or it keeps a warning it has outgrown.
+     */
+    private static boolean isRegression(ChatMessage.Status from, ChatMessage.Status to) {
+        int wasAt = ladderPosition(from);
+        int goingTo = ladderPosition(to);
+        return wasAt > 0 && goingTo > 0 && goingTo <= wasAt;
+    }
+
+    /** Position on the delivery ladder, or 0 for a status that is not on it. */
+    private static int ladderPosition(ChatMessage.Status status) {
+        switch (status) {
+            case PENDING:
+                return 1;
+            case SENT:
+                return 2;
+            case DELIVERED:
+                return 3;
+            case READ:
+                return 4;
+            default:
+                return 0;
         }
     }
 

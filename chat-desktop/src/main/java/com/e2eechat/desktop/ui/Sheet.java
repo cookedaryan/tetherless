@@ -56,7 +56,7 @@ public final class Sheet {
     public static JComponent title(String text) {
         JLabel label = new JLabel(text.toUpperCase(Locale.ROOT));
         label.setFont(Theme.font(Font.BOLD, 11.5f));
-        label.setForeground(Theme.accent());
+        Theme.followForeground(label, Theme::accent);
         label.setBorder(BorderFactory.createEmptyBorder(18, 20, 8, 20));
         JPanel holder = new JPanel(new BorderLayout());
         holder.setOpaque(false);
@@ -114,7 +114,10 @@ public final class Sheet {
 
             JLabel titleLabel = new JLabel(title);
             titleLabel.setFont(Theme.font(Font.PLAIN, 14.5f));
-            titleLabel.setForeground(Theme.textPrimary());
+            // Rows live inside sheets that stay open across a theme toggle - Settings' own Night
+            // mode row is one of them - so the colour is followed rather than captured. The
+            // subtitle needs nothing: WrappedLabel reads the palette when it paints.
+            Theme.followForeground(titleLabel, Theme::textPrimary);
             titleLabel.setAlignmentX(LEFT_ALIGNMENT);
             text.add(titleLabel);
 

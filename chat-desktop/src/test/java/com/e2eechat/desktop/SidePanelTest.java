@@ -2,6 +2,7 @@ package com.e2eechat.desktop;
 
 import com.e2eechat.desktop.ui.Motion;
 import com.e2eechat.desktop.ui.SidePanel;
+import com.e2eechat.desktop.ui.Theme;
 
 import org.junit.After;
 import org.junit.Assume;
@@ -13,11 +14,13 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
 import javax.swing.SwingUtilities;
+import java.awt.Color;
 import java.awt.GraphicsEnvironment;
 import java.lang.reflect.InvocationTargetException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -43,11 +46,13 @@ public class SidePanelTest {
 
     private JFrame frame;
     private boolean originalReducedMotion;
+    private boolean originalDark;
 
     @Before
     public void setUp() throws Exception {
         onEdt(() -> {
             originalReducedMotion = Motion.isReducedMotion();
+            originalDark = Theme.isDark();
             Motion.setReducedMotion(true);
             frame = new JFrame();
             // pack() gives the frame a peer so the root pane lays out; without it the layered pane
@@ -62,6 +67,7 @@ public class SidePanelTest {
     public void tearDown() throws Exception {
         onEdt(() -> {
             Motion.setReducedMotion(originalReducedMotion);
+            Theme.setDark(originalDark);
             frame.dispose();
         });
     }
@@ -178,6 +184,63 @@ public class SidePanelTest {
 
         assertEquals(0, leftX[0]);
         assertEquals(expectedRightX[0], rightX[0]);
+    }
+
+    /**
+     * A panel open across a theme toggle has to move with it.
+     *
+     * <p>The sheet paints its own background and border from the palette at construction, and
+     * {@code FlatLaf.updateUI()} cannot correct that: {@code setBackground} stores a plain
+     * {@code Color} rather than a {@code UIResource}, so the look and feel leaves it alone. The
+     * visible case is Settings, whose own Night mode row is inside a panel - flipping it left the
+     * sheet holding the switch in the palette it had just been told to leave.
+     */
+    @Test
+    public void anOpenPanelFollowsAThemeChange() throws Exception {
+        final Color[] light = new Color[1];
+        final Color[] dark = new Color[1];
+        final Color[] expectedDark = new Color[1];
+
+        onEdt(() -> {
+            Theme.setDark(false);
+            SidePanel panel = open(SidePanel.Side.LEFT);
+            light[0] = panel.getBackground();
+
+            Theme.setDark(true);
+            dark[0] = panel.getBackground();
+            expectedDark[0] = Theme.sidebarBg();
+
+            panel.dismiss();
+        });
+
+        assertNotEquals("the open panel kept the palette it was built in", light[0], dark[0]);
+        assertEquals(expectedDark[0], dark[0]);
+    }
+
+    /**
+     * And stops following once it is gone.
+     *
+     * <p>{@code Theme}'s listener list is static and lives for the life of the process, so a
+     * transient component that registers and never deregisters keeps itself alive forever. Panels
+     * are built afresh on every open.
+     */
+    @Test
+    public void aDismissedPanelStopsFollowing() throws Exception {
+        final Color[] afterDismiss = new Color[1];
+        final Color[] whileOpen = new Color[1];
+
+        onEdt(() -> {
+            Theme.setDark(false);
+            SidePanel panel = open(SidePanel.Side.LEFT);
+            whileOpen[0] = panel.getBackground();
+            panel.dismiss();
+
+            Theme.setDark(true);
+            afterDismiss[0] = panel.getBackground();
+        });
+
+        assertEquals("a panel no longer on screen should not still be repainting itself",
+                whileOpen[0], afterDismiss[0]);
     }
 
     @Test

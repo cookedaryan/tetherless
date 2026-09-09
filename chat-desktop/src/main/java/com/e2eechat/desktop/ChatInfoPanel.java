@@ -60,11 +60,11 @@ public class ChatInfoPanel extends JPanel {
 
         JLabel name = new JLabel(client.displayNameFor(peerId));
         name.setFont(Theme.font(Font.BOLD, 16f));
-        name.setForeground(Theme.textPrimary());
+        Theme.followForeground(name, Theme::textPrimary);
 
         JLabel id = new JLabel(peerId);
         id.setFont(new Font(MONOSPACED, Font.PLAIN, 12));
-        id.setForeground(Theme.textSecondary());
+        Theme.followForeground(id, Theme::textSecondary);
 
         PillButton copy = new PillButton("Copy id", PillButton.Style.QUIET);
         copy.onClick(() -> Toolkit.getDefaultToolkit().getSystemClipboard()
@@ -83,11 +83,11 @@ public class ChatInfoPanel extends JPanel {
 
         JLabel caption = new JLabel(label);
         caption.setFont(Theme.font(Font.PLAIN, 12f));
-        caption.setForeground(Theme.textSecondary());
+        Theme.followForeground(caption, Theme::textSecondary);
 
         JLabel digits = new JLabel(groupFingerprint(fingerprint));
         digits.setFont(new Font(MONOSPACED, Font.PLAIN, 13));
-        digits.setForeground(Theme.textPrimary());
+        Theme.followForeground(digits, Theme::textPrimary);
 
         block.add(caption, BorderLayout.NORTH);
         block.add(digits, BorderLayout.CENTER);
@@ -101,7 +101,7 @@ public class ChatInfoPanel extends JPanel {
 
         JLabel label = new JLabel("Verified");
         label.setFont(Theme.font(Font.PLAIN, 14f));
-        label.setForeground(Theme.textPrimary());
+        Theme.followForeground(label, Theme::textPrimary);
 
         ToggleSwitch toggle = new ToggleSwitch(client.getPeerDirectory().isVerified(peerId));
         toggle.onChange(value -> client.getPeerDirectory().setVerified(peerId, value));

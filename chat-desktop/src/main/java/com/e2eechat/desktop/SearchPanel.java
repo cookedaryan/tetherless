@@ -102,7 +102,7 @@ public class SearchPanel extends JPanel {
         if (hits.isEmpty()) {
             JLabel empty = new JLabel("No messages found");
             empty.setFont(Theme.font(Font.PLAIN, 13f));
-            empty.setForeground(Theme.textSecondary());
+            Theme.followForeground(empty, Theme::textSecondary);
             empty.setBorder(BorderFactory.createEmptyBorder(16, 12, 0, 12));
             results.add(empty);
         } else {
@@ -123,13 +123,13 @@ public class SearchPanel extends JPanel {
         JLabel who = new JLabel(client.displayNameFor(hit.getSender())
                 + "  ·  " + dateFormat.format(new Date(hit.getTimestamp())));
         who.setFont(Theme.font(Font.PLAIN, 11f));
-        who.setForeground(Theme.textSecondary());
+        Theme.followForeground(who, Theme::textSecondary);
 
         String content = hit.getContent() == null ? "" : hit.getContent();
         JLabel snippet = new JLabel(content.length() > SNIPPET_CHARS
                 ? content.substring(0, SNIPPET_CHARS) + "…" : content);
         snippet.setFont(Theme.font(Font.PLAIN, 13f));
-        snippet.setForeground(Theme.textPrimary());
+        Theme.followForeground(snippet, Theme::textPrimary);
 
         row.add(who, BorderLayout.NORTH);
         row.add(snippet, BorderLayout.CENTER);

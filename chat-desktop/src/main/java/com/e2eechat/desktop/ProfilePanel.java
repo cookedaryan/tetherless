@@ -71,13 +71,13 @@ public class ProfilePanel extends JPanel {
 
         JLabel nameLabel = new JLabel(name, JLabel.CENTER);
         nameLabel.setFont(Theme.font(Font.BOLD, 18f));
-        nameLabel.setForeground(Theme.textPrimary());
+        Theme.followForeground(nameLabel, Theme::textPrimary);
         card.add(Sheet.fullWidth(nameLabel));
         card.add(Sheet.spacer(6));
 
         JLabel idLabel = new JLabel(PeerId.forDisplay(client.getClientId()), JLabel.CENTER);
         idLabel.setFont(Theme.font(Font.PLAIN, 12.5f));
-        idLabel.setForeground(Theme.textSecondary());
+        Theme.followForeground(idLabel, Theme::textSecondary);
         card.add(Sheet.fullWidth(idLabel));
         card.add(Sheet.spacer(14));
 

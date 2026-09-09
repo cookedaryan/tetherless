@@ -56,6 +56,10 @@ public final class SidePanel extends JPanel {
     private ComponentAdapter resizeListener;
     private Motion.Handle motionHandle = Motion.Handle.COMPLETED;
 
+    /** Null when the sheet has no header. Held so the palette can be re-applied to it. */
+    private JPanel header;
+    private JLabel headerLabel;
+
     private SidePanel(JLayeredPane layers, Side side, int width, String title) {
         this.layers = layers;
         this.side = side;
@@ -64,18 +68,41 @@ public final class SidePanel extends JPanel {
 
         setLayout(new BorderLayout());
         setOpaque(true);
+
+        // A null title means the content draws its own top - the navigation drawer leads with a
+        // profile block, and a back arrow above it would be a second way to close the same sheet.
+        if (title != null) {
+            header = buildHeader(title);
+            add(header, BorderLayout.NORTH);
+        }
+
+        applyTheme();
+        // Not addListener: the static listener list outlives the process's windows, and a panel is
+        // built afresh on every open. follow() drops the registration when the sheet leaves the
+        // layered pane, so dismissing one does not leak it.
+        Theme.follow(this, this::applyTheme);
+    }
+
+    /**
+     * Reads the palette into everything the sheet paints itself.
+     *
+     * <p>Called again on a theme change because these are not values a look and feel can revise:
+     * {@code setBackground} and a matte border hold plain {@code Color}s, so {@code
+     * FlatLaf.updateUI()} leaves them exactly as they were. A panel open across a toggle otherwise
+     * stays in the old palette - most visibly Settings, whose own Night mode row is inside one.
+     */
+    private void applyTheme() {
         setBackground(Theme.sidebarBg());
         // A hairline against the dimmed content, so the sheet has an edge rather than bleeding
         // into the scrim. It goes on whichever side faces the rest of the window.
         setBorder(side == Side.LEFT
                 ? BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.divider())
                 : BorderFactory.createMatteBorder(0, 1, 0, 0, Theme.divider()));
-
-        // A null title means the content draws its own top - the navigation drawer leads with a
-        // profile block, and a back arrow above it would be a second way to close the same sheet.
-        if (title != null) {
-            add(buildHeader(title), BorderLayout.NORTH);
+        if (header != null) {
+            header.setBackground(Theme.headerBg());
+            headerLabel.setForeground(Theme.textPrimary());
         }
+        repaint();
     }
 
     /**
@@ -200,22 +227,21 @@ public final class SidePanel extends JPanel {
         return side == Side.LEFT ? -width : layerWidth;
     }
 
-    private JComponent buildHeader(String title) {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setOpaque(true);
-        header.setBackground(Theme.headerBg());
-        header.setBorder(BorderFactory.createEmptyBorder(14, 8, 14, 14));
+    private JPanel buildHeader(String title) {
+        JPanel bar = new JPanel(new BorderLayout());
+        bar.setOpaque(true);
+        bar.setBorder(BorderFactory.createEmptyBorder(14, 8, 14, 14));
 
         IconButton back = new IconButton(() -> TgIcons.arrowLeft(20), "Close");
         back.addActionListener(e -> dismiss());
-        header.add(back, BorderLayout.WEST);
+        bar.add(back, BorderLayout.WEST);
 
-        JLabel label = new JLabel(title);
-        label.setFont(Theme.font(Font.BOLD, 17f));
-        label.setForeground(Theme.textPrimary());
-        header.add(label, BorderLayout.CENTER);
+        headerLabel = new JLabel(title);
+        headerLabel.setFont(Theme.font(Font.BOLD, 17f));
+        bar.add(headerLabel, BorderLayout.CENTER);
 
-        return header;
+        // Colours are left to applyTheme(), which runs now and again on every theme change.
+        return bar;
     }
 
     /** The dimmed backdrop. Clicking it closes the sheet, as a sheet should. */

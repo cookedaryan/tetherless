@@ -109,13 +109,13 @@ public class NavigationDrawer extends JPanel {
 
         JLabel nameLabel = new JLabel(name);
         nameLabel.setFont(Theme.font(Font.BOLD, 16.5f));
-        nameLabel.setForeground(Theme.textPrimary());
+        Theme.followForeground(nameLabel, Theme::textPrimary);
         header.add(leftAligned(nameLabel));
         header.add(Sheet.spacer(3));
 
         JLabel idLabel = new JLabel(PeerId.forDisplay(client.getClientId()));
         idLabel.setFont(Theme.font(Font.PLAIN, 12f));
-        idLabel.setForeground(Theme.textSecondary());
+        Theme.followForeground(idLabel, Theme::textSecondary);
         header.add(leftAligned(idLabel));
 
         return header;

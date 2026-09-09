@@ -172,6 +172,22 @@ public final class Theme {
         }
     }
 
+    /**
+     * Sets {@code component}'s foreground from {@code colour}, and sets it again on every theme
+     * change for as long as the component is on screen.
+     *
+     * <p>{@code setForeground} stores a plain {@code Color}, not a {@code UIResource}, which is
+     * exactly the signal a look and feel uses to mean "the application chose this, leave it
+     * alone" - so {@code FlatLaf.updateUI()} cannot correct it. Anything that reads a palette
+     * colour once and hands it to a component that outlives a toggle has to read it again, and
+     * this is the one-liner for the common case of a label.
+     */
+    public static void followForeground(javax.swing.JComponent component,
+                                        java.util.function.Supplier<Color> colour) {
+        component.setForeground(colour.get());
+        follow(component, () -> component.setForeground(colour.get()));
+    }
+
     // ---------------------------------------------------------------- colours
 
     private static Color pick(int lightRgb, int darkRgb) {

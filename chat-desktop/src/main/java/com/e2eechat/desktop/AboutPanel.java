@@ -73,7 +73,7 @@ public class AboutPanel extends JPanel {
 
         JLabel name = new JLabel("Tetherless", JLabel.CENTER);
         name.setFont(Theme.font(Font.BOLD, 18f));
-        name.setForeground(Theme.textPrimary());
+        Theme.followForeground(name, Theme::textPrimary);
         card.add(Sheet.fullWidth(name));
         card.add(Sheet.spacer(6));
 
