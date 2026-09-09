@@ -56,13 +56,19 @@ public class ChatServerLifecycleTest {
         return TlsSupport.connectPinned("127.0.0.1", port);
     }
 
-    private Message createHello(String senderId) {
-        return new MessageBuilder()
-                .setType(MessageType.HELLO)
-                .setSenderId(senderId)
-                .setMessageId(UUID.randomUUID().toString())
-                .setTimestamp(System.currentTimeMillis())
-                .buildUnsigned();
+    /**
+     * A registration frame for {@code label}, signed by the identity that label stands for.
+     *
+     * <p>The relay checks that the id being claimed is the hash of the key in the frame and that
+     * the frame is signed by the matching private key, so a test can no longer just assert a name.
+     */
+    private Message createHello(String label) throws Exception {
+        return TestIdentity.named(label).registrationHello();
+    }
+
+    /** The peer id behind a label, for the sender and receiver fields of routed frames. */
+    private static String id(String label) {
+        return TestIdentity.named(label).peerId();
     }
 
     @Test(timeout = 5000)
@@ -108,8 +114,8 @@ public class ChatServerLifecycleTest {
         // Try to send to userB (not connected)
         Message msg = new MessageBuilder()
                 .setType(MessageType.TEXT_MESSAGE)
-                .setSenderId("userA")
-                .setReceiverId("userB")
+                .setSenderId(id("userA"))
+                .setReceiverId(id("userB"))
                 .setPayload("Hello".getBytes())
                 .setIv(new byte[12])
                 .setMessageId(UUID.randomUUID().toString())
@@ -139,7 +145,7 @@ public class ChatServerLifecycleTest {
         // So we will just manually send a PING and verify we get a PONG.
         Message ping = new MessageBuilder()
                 .setType(MessageType.PING)
-                .setSenderId("userA")
+                .setSenderId(id("userA"))
                 .setMessageId(UUID.randomUUID().toString())
                 .setTimestamp(System.currentTimeMillis())
                 .buildUnsigned();
@@ -161,15 +167,18 @@ public class ChatServerLifecycleTest {
             final int id = i;
             new Thread(() -> {
                 try {
+                    // Generated once per thread rather than per cycle: an RSA keypair is the
+                    // expensive part of a registration, and the point here is socket churn.
+                    TestIdentity identity = TestIdentity.named("user_" + id);
                     for (int j = 0; j < 10; j++) { // 10 cycles each
                         Socket s = createSocket();
                         FrameWriter w = new FrameWriter(s.getOutputStream());
-                        w.writeMessage(createHello("user_" + id));
+                        w.writeMessage(identity.registrationHello());
                         Thread.sleep(10); // stay connected briefly
                         
                         Message disconnect = new MessageBuilder()
                                 .setType(MessageType.DISCONNECT)
-                                .setSenderId("user_" + id)
+                                .setSenderId(identity.peerId())
                                 .setMessageId(UUID.randomUUID().toString())
                                 .setTimestamp(System.currentTimeMillis())
                                 .buildUnsigned();

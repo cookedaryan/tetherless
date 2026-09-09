@@ -5,12 +5,14 @@ import com.e2eechat.core.models.MessageBuilder;
 import com.e2eechat.core.models.MessageType;
 import com.e2eechat.core.protocol.FrameReader;
 import com.e2eechat.core.protocol.FrameWriter;
+import com.e2eechat.core.protocol.HelloPayload;
+import com.e2eechat.core.protocol.MessageSigner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
+import java.security.KeyPair;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -49,6 +51,14 @@ public class ConnectionManager {
     protected final int port;
     protected final String clientId;
     protected final MessageListener listener;
+
+    /**
+     * The identity keypair, used only to prove ownership of {@link #clientId} to the relay.
+     *
+     * <p>Nothing else on this connection is signed here - peer traffic is signed by
+     * {@code SecureChat} before it ever reaches the queue.
+     */
+    protected final KeyPair identityKey;
     
     /**
      * Everything one connection attempt owns.
@@ -103,10 +113,21 @@ public class ConnectionManager {
     
     private ExecutorService reconnectExecutor;
 
-    public ConnectionManager(String host, int port, String clientId, MessageListener listener) {
+    /**
+     * @param clientId this client's peer id, which must be {@code PeerId.of(identityKey.getPublic())}
+     * @param identityKey the identity keypair, used to sign the registration HELLO. Required: an
+     *                    unauthenticated registration is what let anyone claim anyone else's id.
+     */
+    public ConnectionManager(String host, int port, String clientId, KeyPair identityKey,
+                             MessageListener listener) {
+        if (identityKey == null) {
+            throw new IllegalArgumentException(
+                    "An identity keypair is required to register with the relay");
+        }
         this.host = host;
         this.port = port;
         this.clientId = clientId;
+        this.identityKey = identityKey;
         this.listener = listener;
     }
 
@@ -217,17 +238,15 @@ public class ConnectionManager {
     }
 
     protected void connectInternal() throws Exception {
-        // Pins the relay's development certificate. A production deployment would trust the system
-        // CAs plus its own issuer instead; see TlsSupport for how the store is located.
-        SSLSocketFactory factory = TlsSupport.clientContext().getSocketFactory();
-
         // Its own socket, streams and registration latch, so nothing this attempt starts can
         // reach into the attempt that replaces it. The latch is armed by the constructor, before
         // the reader exists, so an acknowledgement cannot arrive with nothing to record it.
         final Attempt fresh = new Attempt();
-        fresh.socket = (SSLSocket) factory.createSocket(host, port);
-        fresh.socket.setEnabledProtocols(new String[]{"TLSv1.3"});
-        fresh.socket.startHandshake();
+
+        // Pins the relay's certificate and checks it was issued for this host; see TlsSupport.
+        // This used to open the socket itself, and that copy was the one missing the hostname
+        // check - which is the argument for there being a single way to dial the relay.
+        fresh.socket = TlsSupport.connectPinned(host, port);
 
         fresh.in = new FrameReader(fresh.socket.getInputStream());
         fresh.out = new FrameWriter(fresh.socket.getOutputStream());
@@ -243,14 +262,7 @@ public class ConnectionManager {
         fresh.reader.setDaemon(true);
         fresh.reader.start();
         
-        // Send HELLO
-        Message hello = new MessageBuilder()
-                .setType(MessageType.HELLO)
-                .setSenderId(clientId)
-                .setMessageId(UUID.randomUUID().toString())
-                .setTimestamp(System.currentTimeMillis())
-                .buildUnsigned();
-        outboundQueue.offer(hello);
+        outboundQueue.offer(registrationHello());
 
         // The socket being up is not the same as being reachable. Until the relay has registered
         // this id it will answer anything addressed here with RECIPIENT_OFFLINE, and a client that
@@ -261,6 +273,29 @@ public class ConnectionManager {
             fresh.close();
             throw new IOException("The relay did not acknowledge the registration");
         }
+    }
+
+    /**
+     * The frame that claims {@link #clientId} on the relay.
+     *
+     * <p>It carries the identity public key and is signed with the matching private key, which is
+     * what the relay checks before it hands the id out. Registration used to be an unsigned frame
+     * naming an id and nothing more: anyone who knew someone's id could connect, claim it, and
+     * have the real owner refused with {@code ID_TAKEN} on their next login - a lockout of every
+     * known user for the cost of one socket each.
+     *
+     * <p>The display name is deliberately left empty. The relay has no use for it and no business
+     * knowing it; peers learn it from the {@code HELLO} they get end-to-end.
+     */
+    private Message registrationHello() throws Exception {
+        Message hello = new MessageBuilder()
+                .setType(MessageType.HELLO)
+                .setSenderId(clientId)
+                .setPayload(HelloPayload.encode(identityKey.getPublic(), ""))
+                .setMessageId(UUID.randomUUID().toString())
+                .setTimestamp(System.currentTimeMillis())
+                .buildUnsigned();
+        return MessageSigner.sign(hello, identityKey.getPrivate());
     }
 
     private void writerLoop(Attempt own) {
@@ -274,6 +309,27 @@ public class ConnectionManager {
         } catch (Exception e) {
             logger.error("Writer error", e);
             own.close();
+        }
+    }
+
+    /**
+     * Hands a frame to the listener without letting it take the connection down with it.
+     *
+     * <p>The listener is application code on the reader thread, and the only handler above it is
+     * the read loop's catch-all - which cannot tell a socket that has died from a frame the
+     * application mishandled, so it treated both as the end of the connection and closed it. A
+     * peer or relay that sent a frame the client parsed badly could hang it up on demand, over and
+     * over. A bad frame is now a dropped frame; only the socket itself ends the loop.
+     */
+    private void deliver(Message msg) {
+        if (listener == null) {
+            return;
+        }
+        try {
+            listener.onMessageReceived(msg);
+        } catch (Exception e) {
+            logger.error("Listener failed on a {} frame; dropping it and staying connected",
+                    msg.getType(), e);
         }
     }
 
@@ -299,9 +355,7 @@ public class ConnectionManager {
                     own.confirmed = true;
                     own.registered.countDown();
                 } else {
-                    if (listener != null) {
-                        listener.onMessageReceived(msg);
-                    }
+                    deliver(msg);
                 }
             }
         } catch (Exception e) {

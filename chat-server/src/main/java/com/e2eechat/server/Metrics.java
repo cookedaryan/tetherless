@@ -13,6 +13,9 @@ public class Metrics {
     public static final AtomicLong rejectedRateLimit = new AtomicLong(0);
     public static final AtomicLong rejectedBufferOverflow = new AtomicLong(0);
 
+    /** Opening HELLOs that could not prove they owned the id they claimed. */
+    public static final AtomicLong rejectedUnauthenticated = new AtomicLong(0);
+
     public static void updateQueueHighWaterMark(int currentSize) {
         int currentMax = queueHighWaterMark.get();
         while (currentSize > currentMax) {
@@ -31,5 +34,6 @@ public class Metrics {
         rejectedTooManyConnections.set(0);
         rejectedRateLimit.set(0);
         rejectedBufferOverflow.set(0);
+        rejectedUnauthenticated.set(0);
     }
 }

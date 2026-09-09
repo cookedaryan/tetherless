@@ -15,6 +15,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ClientSession implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(ClientSession.class);
@@ -33,6 +34,9 @@ public class ClientSession implements Runnable {
     private int missedPings = 0;
     
     private final ArrayBlockingQueue<byte[]> outboundQueue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+
+    /** Set once, by whichever thread first finds this client's queue full. */
+    private final AtomicBoolean overflowed = new AtomicBoolean();
     private Thread writerThread;
     private volatile boolean running = true;
     private boolean handshakeComplete = false;
@@ -57,6 +61,11 @@ public class ClientSession implements Runnable {
         Metrics.updateQueueHighWaterMark(outboundQueue.size());
         
         if (!outboundQueue.offer(frame)) {
+            // Whoever gets here first owns the teardown; everyone else just drops the frame.
+            if (!overflowed.compareAndSet(false, true)) {
+                return;
+            }
+
             Metrics.rejectedBufferOverflow.incrementAndGet();
             String redactedId = clientId != null ? Redact.id(clientId) : "unknown";
             logger.warn("buffer-overflow: id={}", redactedId);
@@ -70,14 +79,26 @@ public class ClientSession implements Runnable {
                         .setPayload("BUFFER_OVERFLOW".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                         .setTimestamp(System.currentTimeMillis())
                         .buildUnsigned();
+                // Queued rather than written here, and space is made for it because the queue is
+                // by definition full.
                 byte[] errorFrame = MessageCodec.encode(errorMsg);
-                if (out != null) {
-                    out.writeFrame(errorFrame);
-                }
+                outboundQueue.poll();
+                outboundQueue.offer(errorFrame);
             } catch (Exception e) {
                 // Ignore
             }
-            disconnect();
+
+            // Torn down on a thread of its own, because this one is not ours. A routed frame is
+            // enqueued by the *sender's* session thread, and every step of the teardown can block
+            // on a socket that is full precisely because this client stopped reading it: the
+            // direct write this used to do, and the SSL close after it, which still has a
+            // close_notify to get out. The sender's thread then stops reading its own socket, so
+            // one client that stalls takes down the session of everyone talking to it - the relay
+            // wedges from a slow reader rather than shedding it. Nothing here waits on the result;
+            // the frame that overflowed is dropped either way.
+            Thread closer = new Thread(this::disconnect, "Overflow-Close-" + redactedId);
+            closer.setDaemon(true);
+            closer.start();
         }
     }
 
@@ -201,6 +222,26 @@ public class ClientSession implements Runnable {
 
                 if (message.getType() == MessageType.HELLO) {
                     if (clientId == null) {
+                        // Prove the claim before acting on it. Everything below - taking the id,
+                        // naming the thread, routing to it - used to run on an unsigned frame that
+                        // simply asserted who it was from.
+                        String refusal = registry.rejectRegistration(message);
+                        if (refusal != null) {
+                            Metrics.rejectedUnauthenticated.incrementAndGet();
+                            logger.warn("reject-registration: ip={} reason={}",
+                                    socket.getInetAddress().getHostAddress(), refusal);
+                            Message errorMsg = new MessageBuilder()
+                                    .setType(MessageType.ERROR)
+                                    .setSenderId("SERVER")
+                                    .setReceiverId("unknown")
+                                    .setPayload(refusal.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                                    .setMessageId(UUID.randomUUID().toString())
+                                    .setTimestamp(System.currentTimeMillis())
+                                    .buildUnsigned();
+                            enqueueFrame(MessageCodec.encode(errorMsg));
+                            break;
+                        }
+
                         clientId = message.getSenderId();
                         if (writerThread != null) {
                             writerThread.setName("Writer-" + Redact.id(clientId));

@@ -90,7 +90,7 @@ New types are appended; nothing is reordered or removed.
 
 | Ordinal | Type | Payload | Signed | Encrypted | Notes |
 |---|---|---|---|---|---|
-| 0 | `HELLO` | identity key and display name (§6) | no | no | registers with the relay, or introduces a peer |
+| 0 | `HELLO` | identity key and display name (§6) | registration only | no | registers with the relay, or introduces a peer |
 | 1 | `HELLO_ACK` | — | no | no | relay to client, confirming the registration |
 | 2 | `KEY_EXCHANGE_INIT` | DH public key, X.509 encoded | yes | no | |
 | 3 | `KEY_EXCHANGE_REPLY` | DH public key, X.509 encoded | yes | no | |
@@ -106,6 +106,25 @@ New types are appended; nothing is reordered or removed.
 
 `HELLO_ACK`, `PING`, `PONG` and `DISCONNECT` are between a client and the relay. Everything else is
 between clients, and the relay only routes it.
+
+**Every inter-client frame must carry a signature**, and one that does not is dropped rather than
+processed. That includes the acknowledgement and status types, which look inert but are not: an
+unsigned `DELIVERY_ACK` or `READ_RECEIPT` would let a relay show a message as delivered or read
+when it was neither, and an unsigned `KEY_EXCHANGE_REJECT` would let it tear down a handshake
+without holding anybody's key. `HELLO` is the exception on the client-to-client path, because it is
+what carries the identity key there is nothing yet to check against; it is bound to its sender by
+the id-to-key rule in §6 instead.
+
+**A frame is only processed by the client it is addressed to.** A signature covers the receiver id,
+so a frame one peer genuinely signed for a third party verifies perfectly when a relay hands it to
+somebody else - the recipient has to check the binding itself, and drops anything whose
+`receiverId` is not its own id.
+
+**A payload the type needs but does not have means the frame is dropped.** The codec encodes a
+null payload as a length of -1 and hands back null, so an empty `DELIVERY_ACK` or `ERROR` is a
+legal frame; a receiver that read one as text raised a `NullPointerException` on its reader thread,
+which the read loop answered by closing the socket. One such frame put a client offline, so a
+missing payload is now a reason to ignore the frame, never to end the connection.
 
 `TYPING` and `READ_RECEIPT` are signed but not encrypted. They carry no content, and the relay
 already learns who is talking to whom from the routing fields — encrypting them would buy nothing
@@ -126,6 +145,11 @@ Consequences worth stating:
 - **A key change is an id change.** There is no rename and no account recovery.
 - **A `HELLO` whose sender id is not the hash of the key it carries is rejected**, so a peer cannot
   claim someone else's address and have their own key trusted against it on first contact.
+- **The same rule applies at the relay, plus a signature.** A registration presents the identity
+  key and is signed with the matching private key, so claiming an id requires holding it. Peer ids
+  are public - they are what you hand someone so they can message you - so a relay that took the
+  claim at face value could be squatted: connect as somebody, and the real owner is refused with
+  `ID_TAKEN` on their next login, for the cost of one socket per victim.
 
 The `HELLO` payload is its own small format:
 
@@ -182,7 +206,9 @@ Alice                          relay                          Bob
 ```
 
 A client's **first** `HELLO` has no `receiverId` and registers it with the relay, which answers
-`HELLO_ACK`. Any later `HELLO` is routed like anything else.
+`HELLO_ACK`. It is signed, and carries the identity key the claimed id was derived from, so the
+relay can check that the id belongs to whoever is asking for it; it carries an empty display name,
+because the relay has no use for one. Any later `HELLO` is routed like anything else.
 
 **A client is not connected until that acknowledgement arrives.** The socket being up says nothing
 about whether the relay will route to this id yet, and a client that reported itself connected any
@@ -291,6 +317,11 @@ The five-minute tolerance is also what stops ordinary clock drift breaking the a
 
 - Accepts TLS 1.3 only. A plaintext connection is dropped.
 - Requires `HELLO` first. Anything else before it, and the connection is closed.
+- Verifies the registration before honouring it: the id claimed must be the hash of the key in the
+  frame, the signature must verify against that key, the timestamp must be within a minute, and the
+  message id must not have been used before. A failure answers `ERROR` with the reason
+  (`ID_DOES_NOT_MATCH_KEY`, `BAD_SIGNATURE`, `STALE_REGISTRATION`, `REPLAYED_REGISTRATION`,
+  `NO_IDENTITY_KEY`, `BAD_PEER_ID`) and closes the connection.
 - Answers a successful registration with `HELLO_ACK`. A rejected one gets `ERROR` instead, never
   both.
 - Refuses a duplicate id, answering `ERROR` with `ID_TAKEN`.

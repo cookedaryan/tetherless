@@ -189,6 +189,14 @@ public class SecureChat {
     /** Processes one received frame. Never throws; failures come back as {@link Outcome#DROPPED}. */
     public Result onMessage(Message msg) {
         try {
+            // Recipient binding, repeated here because HELLO never reaches SessionManager. A relay
+            // that hands us a frame addressed to somebody else must not be able to introduce a
+            // peer to us, or advance our state, on the strength of a signature made for a third
+            // party. See SessionManager.onMessage for the same check on everything else.
+            if (msg.getReceiverId() != null && !clientId.equals(msg.getReceiverId())) {
+                return Result.of(Outcome.DROPPED, msg.getSenderId(), "WRONG_RECIPIENT");
+            }
+
             if (msg.getType() == MessageType.HELLO) {
                 return onHello(msg);
             }

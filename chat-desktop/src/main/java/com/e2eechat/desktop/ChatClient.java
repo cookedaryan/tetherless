@@ -46,6 +46,7 @@ public class ChatClient implements MessageListener {
     private static final String REPLY_MARKER = "\u0001tgreply" + FIELD_SEP;
 
     private final String clientId;
+    private final KeyPair identityKey;
     private final SessionManager sessionManager;
     private final MessageRepository messageRepository;
     private final IdentityKeyStore keyStoreManager;
@@ -67,6 +68,7 @@ public class ChatClient implements MessageListener {
                       MessageRepository messageRepository, IdentityKeyStore keyStoreManager,
                       PeerDirectory peerDirectory, String localDisplayName) {
         this.clientId = clientId;
+        this.identityKey = identityKey;
         this.sessionManager = sessionManager;
         this.messageRepository = messageRepository;
         this.keyStoreManager = keyStoreManager;
@@ -94,7 +96,7 @@ public class ChatClient implements MessageListener {
         }
         this.relayHost = host;
         this.relayPort = port;
-        connectionManager = new ConnectionManager(host, port, clientId, this);
+        connectionManager = new ConnectionManager(host, port, clientId, identityKey, this);
         connectionManager.start();
     }
 
@@ -277,12 +279,23 @@ public class ChatClient implements MessageListener {
             if (msg.getType() == MessageType.READ_RECEIPT) {
                 messageRepository.markOutgoingRead(clientId, msg.getSenderId());
             } else if (msg.getType() == MessageType.DELIVERY_ACK) {
+                // The codec allows a null payload, and this runs on the reader thread: reading it
+                // without checking threw a NullPointerException that unwound into the read loop,
+                // which caught it, gave up and closed the socket. One 20-byte frame was enough to
+                // put a client offline. An acknowledgement with no message id says nothing, so it
+                // is dropped rather than broadcast.
+                byte[] ackedId = msg.getPayload();
+                if (ackedId == null || ackedId.length == 0) {
+                    logger.warn("Ignoring a DELIVERY_ACK from {} with no message id",
+                            PeerId.shortForm(msg.getSenderId()));
+                    return;
+                }
                 // Persisted here rather than in the window. A tick that lives only in the
                 // transcript is gone on restart, and the window only updated it when a
                 // conversation happened to be open, so an acknowledgement arriving at any other
                 // moment was dropped.
                 messageRepository.updateStatus(
-                        new String(msg.getPayload(), StandardCharsets.UTF_8),
+                        new String(ackedId, StandardCharsets.UTF_8),
                         ChatMessage.Status.DELIVERED);
             }
             broadcast(msg);

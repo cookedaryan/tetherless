@@ -2,6 +2,9 @@ package com.e2eechat.core.network;
 
 import org.junit.Test;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -12,6 +15,21 @@ import static org.junit.Assert.assertTrue;
  * because asserting a doubling schedule by waiting for it would take a little over two minutes.
  */
 public class ConnectionManagerBackoffTest {
+
+    private static KeyPair stub;
+
+    /**
+     * An identity for the constructor, which now insists on one. Nothing here signs anything - the
+     * schedule under test never touches a socket - so a single pair, generated once, is enough.
+     */
+    private static KeyPair stubIdentity() throws Exception {
+        if (stub == null) {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            generator.initialize(2048);
+            stub = generator.generateKeyPair();
+        }
+        return stub;
+    }
 
     @Test
     public void ceilingDoublesFromOneSecond() {
@@ -48,8 +66,8 @@ public class ConnectionManagerBackoffTest {
      * coming back up is not met by every client it dropped at the same instant.
      */
     @Test
-    public void delayIsJitteredBelowTheCeiling() {
-        ConnectionManager manager = new ConnectionManager("localhost", 1, "id", null);
+    public void delayIsJitteredBelowTheCeiling() throws Exception {
+        ConnectionManager manager = new ConnectionManager("localhost", 1, "id", stubIdentity(), null);
         for (int attempt = 0; attempt < 8; attempt++) {
             long ceiling = ConnectionManager.backoffCeilingMillis(attempt);
             boolean sawSomethingBelowTheCeiling = false;

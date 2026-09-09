@@ -49,14 +49,14 @@ public class ServerRoutingIntegrityTest {
         return TlsSupport.connectPinned("127.0.0.1", port);
     }
 
-    private void sendHello(FrameWriter w, String senderId) throws Exception {
-        Message hello = new MessageBuilder()
-                .setType(MessageType.HELLO)
-                .setSenderId(senderId)
-                .setMessageId(UUID.randomUUID().toString())
-                .setTimestamp(System.currentTimeMillis())
-                .buildUnsigned();
-        w.writeMessage(hello);
+    /** Registers as {@code label}, proving ownership of the id the way the relay now requires. */
+    private void sendHello(FrameWriter w, String label) throws Exception {
+        w.writeMessage(TestIdentity.named(label).registrationHello());
+    }
+
+    /** The peer id behind a label, for the sender and receiver fields of routed frames. */
+    private static String id(String label) {
+        return TestIdentity.named(label).peerId();
     }
 
     /**
@@ -65,8 +65,8 @@ public class ServerRoutingIntegrityTest {
      * <p>The relay acknowledges a registration, so a test that needs a peer to be routable can
      * wait for exactly that.
      */
-    private void register(FrameWriter w, FrameReader r, String senderId) throws Exception {
-        sendHello(w, senderId);
+    private void register(FrameWriter w, FrameReader r, String label) throws Exception {
+        sendHello(w, label);
         assertEquals(MessageType.HELLO_ACK, r.readMessage().getType());
     }
 
@@ -91,8 +91,8 @@ public class ServerRoutingIntegrityTest {
 
         Message msg = new MessageBuilder()
                 .setType(MessageType.TEXT_MESSAGE)
-                .setSenderId("alice")
-                .setReceiverId("bob")
+                .setSenderId(id("alice"))
+                .setReceiverId(id("bob"))
                 .setMessageId(UUID.randomUUID().toString())
                 .setTimestamp(System.currentTimeMillis())
                 .setPayload(payload)
@@ -140,8 +140,8 @@ public class ServerRoutingIntegrityTest {
             for (int i = 0; i < 500; i++) {
                 Message msg = new MessageBuilder()
                         .setType(MessageType.TEXT_MESSAGE)
-                        .setSenderId("alice")
-                        .setReceiverId("slow_bob")
+                        .setSenderId(id("alice"))
+                        .setReceiverId(id("slow_bob"))
                         .setMessageId(UUID.randomUUID().toString())
                         .setTimestamp(System.currentTimeMillis())
                         .setPayload(payload)

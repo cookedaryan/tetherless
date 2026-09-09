@@ -64,6 +64,9 @@ public class ChatService extends Service implements MessageListener {
     private AndroidKeyStoreManager keyStore;
     private String clientId;
 
+    /** Held so a reconnect can re-prove ownership of {@link #clientId} to the relay. */
+    private KeyPair identityKey;
+
     /** All crypto and database work. Nothing touching either belongs on the main thread. */
     private ExecutorService worker;
 
@@ -80,7 +83,7 @@ public class ChatService extends Service implements MessageListener {
     private volatile String currentPeerId;
 
     public class LocalBinder extends Binder {
-        ChatService getService() {
+        public ChatService getService() {
             return ChatService.this;
         }
     }
@@ -123,6 +126,7 @@ public class ChatService extends Service implements MessageListener {
         try {
             keyStore = new AndroidKeyStoreManager(this);
             KeyPair identity = keyStore.loadOrCreateIdentity(null);
+            identityKey = identity;
 
             // The address is a pure function of the key: it survives renames and reinstalls of the
             // app's data, though not of the keystore entry itself.
@@ -139,7 +143,8 @@ public class ChatService extends Service implements MessageListener {
             SessionManager sessionManager = new SessionManager(clientId, peerKeyLookup);
 
             connectionManager = new ConnectionManager(
-                    MobileConfig.relayHost(this), MobileConfig.relayPort(this), clientId, this);
+                    MobileConfig.relayHost(this), MobileConfig.relayPort(this), clientId,
+                    identityKey, this);
 
             secureChat = new SecureChat(
                     clientId, identity, sessionManager, keyStore,
@@ -153,6 +158,18 @@ public class ChatService extends Service implements MessageListener {
             Log.e(TAG, "could not initialise identity", e);
             connectionStateLive.postValue("IDENTITY_FAILED");
         }
+    }
+
+    public void restartConnection() {
+        worker.execute(() -> {
+            if (connectionManager != null) {
+                connectionManager.stop();
+                connectionManager = new ConnectionManager(
+                        MobileConfig.relayHost(this), MobileConfig.relayPort(this), clientId,
+                        identityKey, this);
+                connectionManager.start();
+            }
+        });
     }
 
     private void registerNetworkCallback() {

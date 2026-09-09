@@ -1,5 +1,6 @@
 package com.e2eechat.server;
 
+import com.e2eechat.core.models.Message;
 import com.e2eechat.core.util.Redact;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,24 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ClientRegistry {
     private static final Logger logger = LoggerFactory.getLogger(ClientRegistry.class);
     private final ConcurrentHashMap<String, ClientSession> clients = new ConcurrentHashMap<>();
+
+    /**
+     * Shared by every session, because the replay memory it keeps only works relay-wide: a
+     * registration refused on one connection must stay refused when it is presented on another.
+     */
+    private final RegistrationAuthenticator authenticator = new RegistrationAuthenticator();
+
+    /**
+     * Checks that an opening {@code HELLO} may claim the id it names.
+     *
+     * <p>Lives here because owning the id space is what this class does: {@link #register} decides
+     * who holds an address, and this decides who is allowed to ask.
+     *
+     * @return the reason to refuse, or {@code null} when the claim is good
+     */
+    public String rejectRegistration(Message hello) {
+        return authenticator.reject(hello);
+    }
 
     /**
      * Registers a new client session.

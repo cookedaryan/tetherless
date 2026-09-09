@@ -57,14 +57,14 @@ public class ServerResourceLimitsTest {
         return TlsSupport.connectPinned("127.0.0.1", port);
     }
 
-    private void sendHello(FrameWriter w, String senderId) throws Exception {
-        Message hello = new MessageBuilder()
-                .setType(MessageType.HELLO)
-                .setSenderId(senderId)
-                .setMessageId(UUID.randomUUID().toString())
-                .setTimestamp(System.currentTimeMillis())
-                .buildUnsigned();
-        w.writeMessage(hello);
+    /** Registers as {@code label}, proving ownership of the id the way the relay now requires. */
+    private void sendHello(FrameWriter w, String label) throws Exception {
+        w.writeMessage(TestIdentity.named(label).registrationHello());
+    }
+
+    /** The peer id behind a label, for the sender and receiver fields of routed frames. */
+    private static String id(String label) {
+        return TestIdentity.named(label).peerId();
     }
 
     @Test(timeout = 5000)
@@ -117,8 +117,8 @@ public class ServerResourceLimitsTest {
             for (int i = 0; i < 15; i++) {
                 Message text = new MessageBuilder()
                         .setType(MessageType.TEXT_MESSAGE)
-                        .setSenderId("spammer")
-                        .setReceiverId("victim")
+                        .setSenderId(id("spammer"))
+                        .setReceiverId(id("victim"))
                         .setMessageId(UUID.randomUUID().toString())
                         .setTimestamp(System.currentTimeMillis())
                         .setPayload("spam".getBytes())

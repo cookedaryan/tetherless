@@ -18,10 +18,24 @@ public class TestClient {
     private Socket socket;
     private FrameReader in;
     private FrameWriter out;
+
+    /** The identity this client registers with; ids are derived from its key, not chosen. */
+    private final TestIdentity identity;
     private final String clientId;
 
-    public TestClient(String clientId) {
-        this.clientId = clientId;
+    /**
+     * @param label a stable nickname for the identity, not the id itself. The relay only accepts a
+     *              registration whose id is the hash of the key presented with it, so the id comes
+     *              out of {@link TestIdentity} rather than being made up here.
+     */
+    public TestClient(String label) {
+        this.identity = TestIdentity.named(label);
+        this.clientId = identity.peerId();
+    }
+
+    /** This client's peer id, for tests that assert on routing. */
+    public String peerId() {
+        return clientId;
     }
 
     public void connectPlaintext(int port) throws IOException {
@@ -46,13 +60,12 @@ public class TestClient {
     }
 
     public void sendHello() throws Exception {
-        Message hello = new MessageBuilder()
-                .setType(MessageType.HELLO)
-                .setSenderId(clientId)
-                .setMessageId(UUID.randomUUID().toString())
-                .setTimestamp(System.currentTimeMillis())
-                .buildUnsigned();
-        out.writeMessage(hello);
+        out.writeMessage(identity.registrationHello());
+    }
+
+    /** Registers under somebody else's id while signing with our own key. */
+    public void sendHelloClaiming(String victimLabel) throws Exception {
+        out.writeMessage(identity.registrationClaiming(TestIdentity.named(victimLabel).peerId()));
     }
 
     /**
@@ -71,7 +84,9 @@ public class TestClient {
         }
     }
 
-    public void sendText(String receiverId, String text) throws Exception {
+    /** @param receiverLabel the recipient's nickname, resolved to their peer id here. */
+    public void sendText(String receiverLabel, String text) throws Exception {
+        String receiverId = TestIdentity.named(receiverLabel).peerId();
         Message textMsg = new MessageBuilder()
                 .setType(MessageType.TEXT_MESSAGE)
                 .setSenderId(clientId)

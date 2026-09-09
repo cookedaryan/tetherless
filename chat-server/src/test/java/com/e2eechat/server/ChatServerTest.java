@@ -78,6 +78,33 @@ public class ChatServerTest {
         alice.close();
     }
 
+    /**
+     * The squatting attack, end to end: peer ids are public, so anyone can name somebody else's.
+     *
+     * <p>The relay used to register whoever asked. That let an attacker take every id they knew
+     * and hold the real owners out with {@code ID_TAKEN}, one socket per victim. Now the claim has
+     * to come with the key the id was derived from, and a signature over it.
+     */
+    @Test(timeout = 10000)
+    public void anIdCannotBeClaimedWithoutTheKeyItCameFrom() throws Exception {
+        TestClient mallory = new TestClient("mallory");
+        mallory.connect(port);
+        mallory.sendHelloClaiming("alice");
+
+        Message answer = mallory.awaitMessage(2000);
+        assertNotNull("the relay must answer a refused registration", answer);
+        assertEquals(MessageType.ERROR, answer.getType());
+        assertEquals("ID_DOES_NOT_MATCH_KEY", new String(answer.getPayload()));
+        mallory.close();
+
+        // And the real Alice is not locked out by the attempt.
+        TestClient alice = new TestClient("alice");
+        alice.connect(port);
+        alice.sendHello();
+        assertEquals(MessageType.HELLO_ACK, alice.awaitMessage(2000).getType());
+        alice.close();
+    }
+
     /** A rejected registration gets the error, and must not also be acknowledged. */
     @Test(timeout = 5000)
     public void testDuplicateRegistrationIsNotAcknowledged() throws Exception {
@@ -114,7 +141,7 @@ public class ChatServerTest {
         
         Message msg = bob.awaitMessage(1000);
         assertNotNull("Bob should receive a message", msg);
-        assertEquals("alice", msg.getSenderId());
+        assertEquals(alice.peerId(), msg.getSenderId());
         assertEquals("Hello Bob!", new String(msg.getPayload()));
 
         alice.close();

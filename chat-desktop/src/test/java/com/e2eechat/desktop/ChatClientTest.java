@@ -8,6 +8,7 @@ import com.e2eechat.core.models.MessageType;
 import com.e2eechat.core.network.ConnectionManager;
 import com.e2eechat.core.network.ConnectionState;
 import com.e2eechat.core.network.MessageListener;
+import com.e2eechat.core.protocol.MessageSigner;
 import com.e2eechat.core.session.Session;
 import com.e2eechat.core.session.SessionManager;
 
@@ -27,6 +28,7 @@ import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 
 import static org.junit.Assert.assertEquals;
@@ -75,12 +77,16 @@ public class ChatClientTest {
     private String aliceId;
     private String bobId;
 
+    /** Kept as fields so a test can forge a frame that is genuinely signed by the right peer. */
+    private KeyPair aliceKeys;
+    private KeyPair bobKeys;
+
     @Before
     public void setUp() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
-        KeyPair aliceKeys = generator.generateKeyPair();
-        KeyPair bobKeys = generator.generateKeyPair();
+        aliceKeys = generator.generateKeyPair();
+        bobKeys = generator.generateKeyPair();
 
         // Ids are derived from the identity keys. A HELLO whose sender id is not the hash of the
         // key it carries is rejected, so the fixture has to use real ids rather than "Alice".
@@ -220,11 +226,73 @@ public class ChatClientTest {
         };
     }
 
+    /**
+     * A keypair for the stand-in transports below. They never open a socket and never register,
+     * so the key is only there to satisfy the constructor; it is generated once because RSA-2048
+     * keygen is not cheap enough to repeat per fixture.
+     */
+    private static KeyPair fixtureKeys() throws Exception {
+        if (fixtureKeys == null) {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            generator.initialize(2048);
+            fixtureKeys = generator.generateKeyPair();
+        }
+        return fixtureKeys;
+    }
+
+    private static KeyPair fixtureKeys;
+
+    /**
+     * A frame with no payload must be ignored, not fatal.
+     *
+     * <p>{@code MessageCodec} encodes a null payload as a length of -1 and decodes it back to
+     * null, so this is a legal frame - and reading it as text on the receive path threw a
+     * {@link NullPointerException}. That runs on the reader thread, where the only handler is the
+     * read loop's catch-all: it logged, gave up, and closed the socket. One 20-byte frame from a
+     * peer or a hostile relay was enough to knock a client offline, repeatedly.
+     *
+     * <p>The acknowledgement is genuinely signed by Bob, because after the control-frame signature
+     * fix an unsigned one is dropped earlier and would never reach the code under test.
+     */
+    @Test
+    public void anAcknowledgementWithNoPayloadIsIgnoredRatherThanFatal() throws Exception {
+        Message emptyAck = MessageSigner.sign(new MessageBuilder()
+                .setType(MessageType.DELIVERY_ACK)
+                .setSenderId(bobId)
+                .setReceiverId(aliceId)
+                .setMessageId(UUID.randomUUID().toString())
+                .setTimestamp(System.currentTimeMillis())
+                .buildUnsigned(), bobKeys.getPrivate());
+
+        aliceClient.onMessageReceived(emptyAck);
+
+        assertTrue("an acknowledgement naming no message must not touch any status: "
+                + statusUpdates, statusUpdates.isEmpty());
+    }
+
+    /** The same frame carrying a message id still does what it is supposed to. */
+    @Test
+    public void anAcknowledgementNamingAMessageStillAdvancesIt() throws Exception {
+        Message ack = MessageSigner.sign(new MessageBuilder()
+                .setType(MessageType.DELIVERY_ACK)
+                .setSenderId(bobId)
+                .setReceiverId(aliceId)
+                .setPayload("m1".getBytes(StandardCharsets.UTF_8))
+                .setMessageId(UUID.randomUUID().toString())
+                .setTimestamp(System.currentTimeMillis())
+                .buildUnsigned(), bobKeys.getPrivate());
+
+        aliceClient.onMessageReceived(ack);
+
+        assertTrue("expected m1 to be advanced to DELIVERED, saw " + statusUpdates,
+                statusUpdates.contains("m1=DELIVERED"));
+    }
+
     /** Replaces the client's transport with one that records frames and hands them to the peer. */
     private static void injectTransport(ChatClient client, List<Message> wire, ChatClient peer)
             throws Exception {
         ConnectionManager transport =
-                new ConnectionManager("localhost", 0, "unused", client) {
+                new ConnectionManager("localhost", 0, "unused", fixtureKeys(), client) {
                     @Override
                     public boolean sendMessage(Message message) {
                         wire.add(message);
@@ -539,7 +607,7 @@ public class ChatClientTest {
 
     /** Swaps Alice's transport for one that refuses everything, as a closed connection would. */
     private void refuseAliceTransport() throws Exception {
-        ConnectionManager refusing = new ConnectionManager("localhost", 0, "unused", aliceClient) {
+        ConnectionManager refusing = new ConnectionManager("localhost", 0, "unused", fixtureKeys(), aliceClient) {
             @Override
             public boolean sendMessage(Message message) {
                 return false;
@@ -564,7 +632,7 @@ public class ChatClientTest {
         // so this fails authentication whichever check fires first.
         Field field = ChatClient.class.getDeclaredField("connectionManager");
         field.setAccessible(true);
-        field.set(aliceClient, new ConnectionManager("localhost", 0, "unused", aliceClient) {
+        field.set(aliceClient, new ConnectionManager("localhost", 0, "unused", fixtureKeys(), aliceClient) {
             @Override
             public boolean sendMessage(Message message) {
                 if (message.getType() != MessageType.TEXT_MESSAGE) {

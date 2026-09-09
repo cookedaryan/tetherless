@@ -266,6 +266,80 @@ public class MessageRepositoryTest {
                 repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
     }
 
+    /**
+     * The regression the transcript already refused, now refused by the row as well.
+     *
+     * <p>This client re-acknowledges on every read receipt and the relay may redeliver, so a
+     * {@code DELIVERY_ACK} arriving after a {@code READ_RECEIPT} is ordinary traffic, not an
+     * attack. Writing it moved the row back to {@code DELIVERED}; the open window kept showing the
+     * filled tick, so nothing looked wrong until a restart read the downgrade back.
+     */
+    @Test
+    public void aLateDeliveryAckCannotPullAReadMessageBack() {
+        repository.saveMessage("m1", ALICE, BOB, "read already", 1,
+                ChatMessage.Status.READ, null, null, null, true);
+
+        repository.updateStatus("m1", ChatMessage.Status.DELIVERED);
+
+        assertEquals(ChatMessage.Status.READ,
+                repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
+    }
+
+    @Test
+    public void statusNeverWalksBackDownTheLadder() {
+        repository.saveMessage("m1", ALICE, BOB, "delivered", 1,
+                ChatMessage.Status.DELIVERED, null, null, null, true);
+
+        repository.updateStatus("m1", ChatMessage.Status.SENT);
+        repository.updateStatus("m1", ChatMessage.Status.PENDING);
+
+        assertEquals(ChatMessage.Status.DELIVERED,
+                repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
+    }
+
+    /** Re-applying the status a message already has changes nothing and is not an error. */
+    @Test
+    public void reapplyingTheSameStatusIsHarmless() {
+        repository.saveMessage("m1", ALICE, BOB, "delivered", 1,
+                ChatMessage.Status.DELIVERED, null, null, null, true);
+
+        repository.updateStatus("m1", ChatMessage.Status.DELIVERED);
+
+        assertEquals(ChatMessage.Status.DELIVERED,
+                repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
+    }
+
+    /**
+     * FAILED is off the ladder in both directions, so the guard must not trap a message there.
+     *
+     * <p>A send that fails has to be able to say so, and a retry that succeeds has to be able to
+     * clear the warning again.
+     */
+    @Test
+    public void failureIsNotOnTheLadderAndMovesInBothDirections() {
+        repository.saveMessage("m1", ALICE, BOB, "went out", 1,
+                ChatMessage.Status.SENT, null, null, null, true);
+
+        repository.updateStatus("m1", ChatMessage.Status.FAILED);
+        assertEquals(ChatMessage.Status.FAILED,
+                repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
+
+        repository.updateStatus("m1", ChatMessage.Status.SENT);
+        assertEquals(ChatMessage.Status.SENT,
+                repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
+    }
+
+    @Test
+    public void updatingToANullStatusIsANoOp() {
+        repository.saveMessage("m1", ALICE, BOB, "untouched", 1,
+                ChatMessage.Status.SENT, null, null, null, true);
+
+        repository.updateStatus("m1", null);
+
+        assertEquals(ChatMessage.Status.SENT,
+                repository.getMessages(ALICE, BOB, 10).get(0).getStatus());
+    }
+
     @Test
     public void updatingAnUnknownOrNullIdIsANoOp() {
         repository.saveMessage(ALICE, BOB, "untouched", 1);

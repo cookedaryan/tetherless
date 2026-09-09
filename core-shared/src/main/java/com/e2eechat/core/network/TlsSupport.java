@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
@@ -226,16 +227,37 @@ public final class TlsSupport {
     }
 
     /**
-     * Opens a TLS 1.3 socket to the relay with the handshake already completed, so a caller that
-     * gets a socket back knows the certificate was accepted.
+     * Applies the protocol and identity settings every relay socket must have, before the
+     * handshake runs.
      *
-     * @param host relay hostname or address
+     * <p>The endpoint identification is the part that is easy to leave off and expensive to omit.
+     * A raw {@link SSLSocket} does <em>not</em> check the certificate against the host it dialled
+     * - unlike {@code HttpsURLConnection}, JSSE only does that when this is set. Without it,
+     * pinning a public CA means accepting any certificate that CA ever issued, to anyone: an
+     * interceptor holding a valid certificate for their own domain would chain to the pinned
+     * issuer, pass verification, and terminate the connection in the middle. It is also what makes
+     * true the guarantee deployment.md gives, that a certificate without a matching SAN fails the
+     * handshake regardless of pinning.
+     */
+    static void applyClientParameters(SSLSocket socket) {
+        socket.setEnabledProtocols(new String[]{"TLSv1.3"});
+        SSLParameters params = socket.getSSLParameters();
+        params.setEndpointIdentificationAlgorithm("HTTPS");
+        socket.setSSLParameters(params);
+    }
+
+    /**
+     * Opens a TLS 1.3 socket to the relay with the handshake already completed, so a caller that
+     * gets a socket back knows the certificate was accepted <em>and</em> that it was issued for
+     * the host that was dialled.
+     *
+     * @param host relay hostname or address, which must match a SAN on the relay's certificate
      * @param port relay port
      */
     public static SSLSocket connectPinned(String host, int port) throws Exception {
         SSLSocketFactory factory = clientContext().getSocketFactory();
         SSLSocket socket = (SSLSocket) factory.createSocket(host, port);
-        socket.setEnabledProtocols(new String[]{"TLSv1.3"});
+        applyClientParameters(socket);
         socket.startHandshake();
         return socket;
     }

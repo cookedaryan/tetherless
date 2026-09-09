@@ -13,7 +13,7 @@ import java.util.function.Function;
 public class SessionManager {
 
     public enum Outcome {
-        DELIVER, DROP_REPLAY, DROP_BAD_SIGNATURE, DROP_NO_SESSION, REKEY_REQUIRED, HANDSHAKE_PROCEED, HANDSHAKE_DROPPED
+        DELIVER, DROP_REPLAY, DROP_BAD_SIGNATURE, DROP_NO_SESSION, DROP_WRONG_RECIPIENT, REKEY_REQUIRED, HANDSHAKE_PROCEED, HANDSHAKE_DROPPED
     }
 
     public static class ProcessResult {
@@ -45,7 +45,17 @@ public class SessionManager {
         if (Math.abs(now - msg.getTimestamp()) > 300000) {
             return new ProcessResult(Outcome.DROP_REPLAY, null); // Clock skew / old replay
         }
-        
+
+        // A frame is ours only if it is addressed to us, and nothing used to check that. The
+        // signature covers the receiver id, so a frame Bob genuinely signed for Charlie verifies
+        // perfectly when a relay hands it to Alice instead - and Alice would then advance her own
+        // session with Bob on it, or mark her own messages delivered. The binding has to be
+        // enforced here, before any session state is touched. It also drops a client's own frame
+        // reflected back at it.
+        if (msg.getReceiverId() != null && !localClientId.equals(msg.getReceiverId())) {
+            return new ProcessResult(Outcome.DROP_WRONG_RECIPIENT, null);
+        }
+
         if (msg.getType() == MessageType.HELLO) {
             // Hello messages are either unsigned or self-signed and process differently
             return new ProcessResult(Outcome.DELIVER, msg.getPayload());

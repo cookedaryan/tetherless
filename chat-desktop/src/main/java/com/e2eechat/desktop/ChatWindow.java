@@ -283,6 +283,12 @@ public class ChatWindow extends JFrame
     private void handleMessage(Message msg) {
         switch (msg.getType()) {
             case ERROR:
+                // A null payload is legal on the wire. An error with no reason in it has nothing
+                // to show, so it is dropped rather than turned into a NullPointerException on the
+                // event thread.
+                if (msg.getPayload() == null || msg.getPayload().length == 0) {
+                    return;
+                }
                 header.setStatus(new String(msg.getPayload(), StandardCharsets.UTF_8),
                         Theme.danger(), false);
                 composer.setComposingEnabled(false);
@@ -309,7 +315,8 @@ public class ChatWindow extends JFrame
                 return;
 
             case DELIVERY_ACK:
-                if (transcript != null) {
+                if (transcript != null && msg.getPayload() != null
+                        && msg.getPayload().length > 0) {
                     String ackedId = new String(msg.getPayload(), StandardCharsets.UTF_8);
                     transcript.updateStatus(ackedId, ChatMessage.Status.DELIVERED);
                 }

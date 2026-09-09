@@ -83,16 +83,42 @@ public class MessageRepository {
         }
     }
 
-    /** Advances a message's delivery state. No-op if the id is unknown. */
+    /**
+     * The delivery ladder as SQL, so the guard below is evaluated against the row being replaced
+     * rather than against whatever this process last read.
+     *
+     * <p>Mirrors {@link ChatMessage#ladderPosition}; anything off the ladder scores 0.
+     */
+    private static final String LADDER =
+            "CASE status WHEN 'PENDING' THEN 1 WHEN 'SENT' THEN 2 "
+                    + "WHEN 'DELIVERED' THEN 3 WHEN 'READ' THEN 4 ELSE 0 END";
+
+    /**
+     * Advances a message's delivery state. No-op if the id is unknown.
+     *
+     * <p><strong>Only ever forwards.</strong> A {@code DELIVERY_ACK} can legitimately arrive after
+     * a read receipt - this client re-acknowledges on every receipt, and the relay may redeliver -
+     * and writing it unconditionally moved the row from {@code READ} back to {@code DELIVERED}.
+     * The open transcript refused that downgrade, so it looked fine until a restart read the
+     * database back and the ticks quietly came undone. The guard is in the {@code WHERE} clause
+     * rather than a read-then-write, so two acknowledgements arriving at once cannot interleave
+     * around it.
+     */
     public void updateStatus(String messageId, ChatMessage.Status status) {
-        if (messageId == null) {
+        if (messageId == null || status == null) {
             return;
         }
+        int goingTo = ChatMessage.ladderPosition(status);
         try (Connection conn = DriverManager.getConnection(dbUrl);
              PreparedStatement pstmt = conn.prepareStatement(
-                     "UPDATE messages SET status = ? WHERE message_id = ?")) {
+                     "UPDATE messages SET status = ? WHERE message_id = ? "
+                             + "AND (? = 0 OR " + LADDER + " = 0 OR ? > " + LADDER + ")")) {
             pstmt.setString(1, status.name());
             pstmt.setString(2, messageId);
+            // Off-ladder in either direction is not a regression: FAILED must be able to replace
+            // SENT, and a message that failed must be able to become SENT again.
+            pstmt.setInt(3, goingTo);
+            pstmt.setInt(4, goingTo);
             pstmt.executeUpdate();
         } catch (Exception e) {
             logger.error("Failed to update message status", e);

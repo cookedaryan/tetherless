@@ -35,6 +35,49 @@ public class ChatMessage {
         FAILED
     }
 
+    /**
+     * Position on the delivery ladder, or 0 for a status that is not on it.
+     *
+     * <p>Only PENDING -> SENT -> DELIVERED -> READ is ordered. FAILED sits off the ladder: a
+     * message that failed and later goes out has to be able to become SENT again, or it keeps a
+     * warning it has outgrown.
+     */
+    public static int ladderPosition(Status status) {
+        if (status == null) {
+            return 0;
+        }
+        switch (status) {
+            case PENDING:
+                return 1;
+            case SENT:
+                return 2;
+            case DELIVERED:
+                return 3;
+            case READ:
+                return 4;
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * Whether moving from {@code from} to {@code to} would walk back down the ladder.
+     *
+     * <p>It happens in ordinary use: this client re-acknowledges on every read receipt and the
+     * relay may redeliver, so a {@code DELIVERY_ACK} can arrive after a read receipt has already
+     * been applied. Applying it would pull a filled double tick back to a plain one, which the
+     * sender reads as the peer un-reading their message.
+     *
+     * <p>Defined here, next to the states themselves, because the rule has to hold in two places
+     * at once - the open transcript and the database behind it. It held only in the transcript,
+     * so a downgrade the window refused was still written to disk and came back on restart.
+     */
+    public static boolean isStatusRegression(Status from, Status to) {
+        int wasAt = ladderPosition(from);
+        int goingTo = ladderPosition(to);
+        return wasAt > 0 && goingTo > 0 && goingTo <= wasAt;
+    }
+
     private final String messageId;
     private final String sender;
     private final String receiver;

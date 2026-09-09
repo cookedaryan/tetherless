@@ -13,6 +13,8 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -36,6 +38,13 @@ public class ConnectionManagerTest {
     /** Loopback TLS and framing are fast; anything slower than this is a failure, not a wait. */
     private static final long TIMEOUT_MILLIS = 5000;
 
+    /**
+     * The identity the manager registers with. Generated once: RSA-2048 keygen is slow enough to
+     * dominate the runtime of a class this size, and the stub relay does not check the key against
+     * the id, so one pair serves every test here.
+     */
+    private static KeyPair identity;
+
     private StubRelay relay;
     private ConnectionManager manager;
     private final List<ConnectionState> states = new CopyOnWriteArrayList<>();
@@ -52,6 +61,13 @@ public class ConnectionManagerTest {
             states.add(state);
         }
     };
+
+    @org.junit.BeforeClass
+    public static void generateIdentity() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        identity = generator.generateKeyPair();
+    }
 
     @Before
     public void setUp() throws Exception {
@@ -83,12 +99,80 @@ public class ConnectionManagerTest {
 
     /** A manager whose retry delay is zero, so a test never waits out a real backoff. */
     private ConnectionManager immediate() {
-        return new ConnectionManager("127.0.0.1", relay.port(), "alice", listener) {
+        return new ConnectionManager("127.0.0.1", relay.port(), "alice", identity, listener) {
             @Override
             protected long backoffDelayMillis(int attempt) {
                 return 0;
             }
         };
+    }
+
+    /**
+     * A listener that throws must not cost the connection.
+     *
+     * <p>The listener runs on the reader thread, and the loop's catch-all could not tell a dead
+     * socket from application code that blew up on a frame - so it closed the socket for both.
+     * That made a single malformed frame a remote hang-up: send it again on reconnect and the
+     * client never stays online.
+     */
+    @Test
+    public void aListenerThatThrowsDoesNotDropTheConnection() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger seen =
+                new java.util.concurrent.atomic.AtomicInteger();
+        MessageListener throwing = new MessageListener() {
+            @Override
+            public void onMessageReceived(Message message) {
+                seen.incrementAndGet();
+                throw new NullPointerException("as a null payload once did");
+            }
+
+            @Override
+            public void onConnectionStateChanged(ConnectionState state) {
+                states.add(state);
+            }
+        };
+
+        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", identity, throwing) {
+            @Override
+            protected long backoffDelayMillis(int attempt) {
+                return 0;
+            }
+        };
+        manager.start();
+        awaitState(ConnectionState.CONNECTED);
+
+        StubRelay.Connection connection = relay.awaitConnection(TIMEOUT_MILLIS);
+        assertNotNull("the relay never saw the client", connection);
+
+        connection.send(new MessageBuilder()
+                .setType(MessageType.DELIVERY_ACK)
+                .setSenderId("bob")
+                .setReceiverId("alice")
+                .setMessageId(UUID.randomUUID().toString())
+                .setTimestamp(System.currentTimeMillis())
+                .buildUnsigned());
+
+        long deadline = System.currentTimeMillis() + TIMEOUT_MILLIS;
+        while (seen.get() == 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertEquals("the listener should have been called once", 1, seen.get());
+
+        // The connection has to still be usable: a second frame must get through as well.
+        connection.send(new MessageBuilder()
+                .setType(MessageType.DELIVERY_ACK)
+                .setSenderId("bob")
+                .setReceiverId("alice")
+                .setMessageId(UUID.randomUUID().toString())
+                .setTimestamp(System.currentTimeMillis())
+                .buildUnsigned());
+
+        deadline = System.currentTimeMillis() + TIMEOUT_MILLIS;
+        while (seen.get() < 2 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertEquals("the reader loop stopped after the first failure", 2, seen.get());
+        assertEquals("the client must not have reconnected", 1, relay.connectionCount());
     }
 
     @Test
@@ -140,7 +224,7 @@ public class ConnectionManagerTest {
     @Test
     public void retriesWhenTheRelayNeverAcknowledges() throws Exception {
         relay.acknowledgeHello(false);
-        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", listener) {
+        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", identity, listener) {
             @Override
             protected long backoffDelayMillis(int attempt) {
                 return 0;
@@ -209,7 +293,7 @@ public class ConnectionManagerTest {
         relay.hangUpOnConnect(true);
 
         List<Integer> attempts = new CopyOnWriteArrayList<>();
-        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", listener) {
+        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", identity, listener) {
             @Override
             protected long backoffDelayMillis(int attempt) {
                 attempts.add(attempt);
@@ -279,7 +363,7 @@ public class ConnectionManagerTest {
         };
 
         relay.acknowledgeHello(false);
-        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", parkingListener) {
+        manager = new ConnectionManager("127.0.0.1", relay.port(), "alice", identity, parkingListener) {
             @Override
             protected long registrationTimeoutMillis() {
                 return 1000;

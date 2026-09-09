@@ -288,42 +288,13 @@ public class TranscriptPanel extends JLayeredPane {
         for (int i = messages.size() - 1; i >= 0; i--) {
             ChatMessage m = messages.get(i);
             if (messageId.equals(m.getMessageId())) {
-                if (isRegression(m.getStatus(), status)) {
+                if (ChatMessage.isStatusRegression(m.getStatus(), status)) {
                     return;
                 }
                 m.setStatus(status);
                 repaint();
                 return;
             }
-        }
-    }
-
-    /**
-     * Whether moving from {@code from} to {@code to} would walk back down the delivery ladder.
-     *
-     * <p>Only PENDING → SENT → DELIVERED → READ is ordered. FAILED is not on that ladder at all,
-     * so nothing involving it is a regression: a message that failed and later goes out has to be
-     * able to become SENT again, or it keeps a warning it has outgrown.
-     */
-    private static boolean isRegression(ChatMessage.Status from, ChatMessage.Status to) {
-        int wasAt = ladderPosition(from);
-        int goingTo = ladderPosition(to);
-        return wasAt > 0 && goingTo > 0 && goingTo <= wasAt;
-    }
-
-    /** Position on the delivery ladder, or 0 for a status that is not on it. */
-    private static int ladderPosition(ChatMessage.Status status) {
-        switch (status) {
-            case PENDING:
-                return 1;
-            case SENT:
-                return 2;
-            case DELIVERED:
-                return 3;
-            case READ:
-                return 4;
-            default:
-                return 0;
         }
     }
 
