@@ -66,8 +66,9 @@ Throughout, **Alice** and **Bob** mean those two profiles.
 - The identity is created without a visible pause of more than a second or two.
 - The main window opens, with no conversations.
 - `C:/Temp/qa-alice` now contains `identity.p12`, `chat.db` and `profile.properties`.
-- Menu (top of the sidebar) → **Settings** opens, and under **About** shows a version, a commit
-  and the channel.
+- The hamburger (top of the sidebar) opens a drawer showing your avatar, display name and peer
+  id, with **Profile**, **Settings**, **Relay** and **About**. **About** shows a version, a
+  commit and the channel.
 
 **Watch for:** any mention of `keytool`, or a stack trace in the terminal. Identity generation used
 to shell out to `keytool`; it no longer does, and this is the case that would catch a regression.
@@ -101,8 +102,8 @@ user while working perfectly for everyone testing from a checkout.
 2. Enter the passphrase.
 
 **Expect:**
-- The same peer id as before. Take it from Settings → **Copy my id** and compare with the run
-  before.
+- The same peer id as before. Take it from the drawer's **Profile** → **Copy my id** and compare
+  with the run before.
 - Existing conversations and message history are present and readable.
 - No prompt to set a passphrase or a display name again.
 
@@ -114,9 +115,13 @@ loss.
 ## 4 — A conversation
 
 1. Start Bob in his own profile.
-2. Take Bob's peer id from his Settings → **Copy my id**, then on Alice use Menu → **New chat…**
-   and paste it.
+2. Take Bob's peer id from his drawer's **Profile** → **Copy my id**, then on Alice paste it into
+   the sidebar's **search box**. A line appears under the box offering to start the chat; press
+   Enter.
 3. Send a few messages each way.
+
+**Also check:** pasting something that is not an id and pressing Enter says so under the box
+rather than doing nothing, and pasting your own id is refused with a different reason.
 
 **Expect:**
 - Both sides show the messages in the order sent.
@@ -241,23 +246,28 @@ somewhere nobody is listening.
 *Settings and Chat info used to be a dialog and a JOptionPane. Now they are sliding panels, and
 FlatLaf drives the look and feel — check both.*
 
-1. With a conversation open, open **Settings** from the sidebar's Menu.
+1. With a conversation open, open the drawer from the hamburger and choose **Settings**.
 2. Without closing it, try to open **Chat info** from the shield button in the chat header.
 3. Close whichever panel is open, then open **Chat info** from the header.
 4. Press **Escape**.
 5. Open **Chat info** again, then click the dimmed area outside the panel.
-6. Open the sidebar's Menu and toggle **Night mode**. With it open, look at the menu itself, hover
-   a button that shows a tooltip, and look at a scrollbar (the conversation list, or Chat info's
-   body once there is enough content to scroll).
+6. Open the drawer and toggle **Night mode**. With the theme switched, look at a tooltip, a
+   scrollbar (the conversation list, or a panel body long enough to scroll), and the window's
+   own title bar.
+7. Visit each drawer destination in turn — **Profile**, **Settings**, **Relay**, **About** — and
+   operate a control on each: copy your id, flip a toggle, read the relay status.
 
 **Expect:**
 - Only one panel is open at a time — opening the second one while the first is still open does not
   leave both on screen at once.
 - Escape closes the open panel.
 - Clicking the dimmed area outside the panel closes it.
-- Night mode changes the popup menu, the tooltip and the scrollbar along with the rest of the
-  window. Those three stayed light before FlatLaf was wired in; if any of them does not follow the
-  toggle, that is a regression.
+- **Every panel's controls actually respond.** A panel whose contents look faded and whose clicks
+  close it instead of acting is the scrim sitting above the sheet — the defect fixed in "Put a
+  side panel above its own scrim", and the reason this step exists.
+- Night mode changes the tooltip, the scrollbar and the title bar along with the rest of the
+  window. The title bar is drawn by FlatLaf rather than Windows; if it stays light while the app
+  goes dark, that is a regression.
 
 ---
 

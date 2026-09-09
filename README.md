@@ -113,10 +113,10 @@ Then start a desktop client in another terminal:
 ```
 
 On first launch the client asks for a display name and a passphrase, generates your RSA identity,
-and stores it under `~/.tetherless/`. Your peer id is under **Menu → Settings → Copy my id**; share
-it so others can start a secure chat with you, and open one to someone else's with **Menu → New
-chat…**. Once a conversation exists, its safety number is under the shield button in the chat
-header.
+and stores it under `~/.tetherless/`. Your peer id is in the sidebar drawer under **Profile → Copy
+my id**; share it so others can start a secure chat with you. To open one to someone else's, paste
+their id into the sidebar's search box and press Enter. Once a conversation exists, its safety
+number is under the shield button in the chat header.
 
 To run two identities on one machine, point each at its own profile directory:
 
