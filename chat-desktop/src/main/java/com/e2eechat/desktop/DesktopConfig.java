@@ -19,8 +19,13 @@ import java.util.prefs.Preferences;
  *
  * <h2>Precedence</h2>
  * Command-line arguments beat system properties, which beat {@code config.properties}, which beats
- * the built-in defaults. System properties sit above the file so a launcher script or an operator
- * can override a deployed configuration without editing it.
+ * the settings sheet's stored preference, which beats the built-in defaults. System properties sit
+ * above the file so a launcher script or an operator can override a deployed configuration without
+ * editing it, and the toggle sits below the file so a deployment that mandates a setting - the
+ * update check being the one that matters - cannot be overridden from inside the app.
+ *
+ * <p>Only the update check reads the preference rung; host, port and truststore have no in-app
+ * control and stop at the file.
  */
 public final class DesktopConfig {
 
@@ -45,6 +50,16 @@ public final class DesktopConfig {
     /** Key in {@code config.properties} switching the startup update check off. */
     static final String UPDATES_KEY = "updates";
 
+    /**
+     * What a rung above the settings toggle decided about the update check, or {@code null} when
+     * nothing above it has an opinion and the toggle is what decides.
+     *
+     * <p>Recorded by {@link #load(File, String[])}. The settings sheet needs it: it has to render
+     * the value in force rather than the value stored, and it has to know when offering a switch
+     * would be a lie because flipping it changes nothing.
+     */
+    private static volatile Boolean updateChecksOverride;
+
     /** Records the user's choice. Configuration set by a deployment still wins over this. */
     public static void setUpdateChecksPreference(boolean enabled) {
         PREFS.putBoolean(PREF_UPDATES, enabled);
@@ -58,6 +73,30 @@ public final class DesktopConfig {
     /** Forgets the stored choice, so the built-in default applies again. Used by tests. */
     public static void clearUpdateChecksPreference() {
         PREFS.remove(PREF_UPDATES);
+    }
+
+    /**
+     * Whether a rung above the settings toggle has already decided the update check, and which
+     * way. {@code null} when the toggle is what decides.
+     *
+     * <p>Meaningful only once {@link #load(File, String[])} has run, which it has before any
+     * window exists.
+     */
+    public static Boolean updateChecksOverride() {
+        return updateChecksOverride;
+    }
+
+    /**
+     * The update-check setting actually in force: whatever was pinned above the toggle, and
+     * otherwise the stored choice.
+     *
+     * <p>This, not {@link #updateChecksPreference()}, is what a switch should show. Rendering the
+     * stored choice meant a client with {@code updates=false} in its configuration displayed the
+     * switch on while never checking for anything.
+     */
+    public static boolean effectiveUpdateChecks() {
+        Boolean pinned = updateChecksOverride;
+        return pinned == null ? updateChecksPreference() : pinned.booleanValue();
     }
 
     public static void setNotificationsPreference(boolean enabled) {
@@ -198,10 +237,16 @@ public final class DesktopConfig {
         // Precedence, lowest last: system properties, config.properties, the settings toggle,
         // then the built-in default. The toggle sits below configuration deliberately - a
         // deployment that mandates updates=false must not be overridable from the settings sheet.
-        boolean updates = !"false".equalsIgnoreCase(firstNonEmpty(
+        // Which of those two answered is recorded as well as the answer, because the settings
+        // sheet renders a switch and must not offer one that changes nothing.
+        String pinned = firstNonEmpty(
                 System.getProperty(UpdateChecker.ENABLED_PROPERTY),
                 file.getProperty(UPDATES_KEY),
-                String.valueOf(updateChecksPreference())));
+                null);
+        updateChecksOverride = pinned == null
+                ? null : Boolean.valueOf(!"false".equalsIgnoreCase(pinned));
+        boolean updates = pinned == null
+                ? updateChecksPreference() : !"false".equalsIgnoreCase(pinned);
 
         return new DesktopConfig(host, port, trustStore, trustStorePassword, updates);
     }

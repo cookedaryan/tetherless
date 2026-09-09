@@ -6,6 +6,7 @@ import com.e2eechat.desktop.ui.TgIcons;
 import com.e2eechat.desktop.ui.Theme;
 import com.e2eechat.desktop.ui.ToggleSwitch;
 
+import javax.swing.JComponent;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.util.function.Consumer;
@@ -48,19 +49,40 @@ public class SettingsPanel extends JPanel {
                         DesktopConfig::setNotificationPreviewPreference)));
 
         body.add(Sheet.title("Privacy"));
-        body.add(Sheet.row(TgIcons.info(19), "Check for updates on startup",
-                "Asks GitHub whether a newer version exists. GitHub, and anyone watching the "
-                        + "network, learns this address runs Tetherless and roughly when it "
-                        + "started.",
-                toggle(DesktopConfig.updateChecksPreference(), new Consumer<Boolean>() {
-                    @Override
-                    public void accept(Boolean value) {
-                        DesktopConfig.setUpdateChecksPreference(value);
-                        System.setProperty(UpdateChecker.ENABLED_PROPERTY, String.valueOf(value));
-                    }
-                })));
+        body.add(updateChecksRow());
 
         add(Sheet.scroll(body), BorderLayout.CENTER);
+    }
+
+    /**
+     * The update-check switch, showing what is actually in force.
+     *
+     * <p>It used to render the stored preference, which is not the same thing: a client with
+     * {@code updates=false} in its {@code config.properties} showed the switch <strong>on</strong>
+     * while never checking for anything. Where a rung above the toggle has decided, the switch
+     * shows that decision, cannot be flipped, and the row says who decided - a switch that moves
+     * and changes nothing is worse than no switch.
+     *
+     * <p>Nothing here writes {@code tetherless.updates}. It bought nothing, because
+     * {@code UpdateChecker} reads that property once at startup, and it overwrote the
+     * {@code false} that {@code DesktopConfig.applyTlsProperties} publishes for a
+     * deployment-mandated off - the one override the precedence chain exists to forbid.
+     */
+    private static JComponent updateChecksRow() {
+        Boolean pinned = DesktopConfig.updateChecksOverride();
+        String subtitle = "Asks GitHub whether a newer version exists. GitHub, and anyone watching "
+                + "the network, learns this address runs Tetherless and roughly when it started.";
+        if (pinned != null) {
+            subtitle += " Set by this installation's configuration, so it cannot be changed here.";
+        }
+
+        ToggleSwitch control = new ToggleSwitch(DesktopConfig.effectiveUpdateChecks());
+        if (pinned == null) {
+            control.onChange(DesktopConfig::setUpdateChecksPreference);
+        } else {
+            control.setEnabled(false);
+        }
+        return Sheet.row(TgIcons.info(19), "Check for updates on startup", subtitle, control);
     }
 
     private static ToggleSwitch toggle(boolean initial, Consumer<Boolean> onChange) {

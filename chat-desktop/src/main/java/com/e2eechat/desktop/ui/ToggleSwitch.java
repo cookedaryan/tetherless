@@ -1,6 +1,7 @@
 package com.e2eechat.desktop.ui;
 
 import javax.swing.JComponent;
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -73,6 +74,22 @@ public class ToggleSwitch extends JComponent {
         listeners.add(listener);
     }
 
+    /**
+     * A disabled switch stops offering itself.
+     *
+     * <p>The click and key handlers already refuse while disabled, but the hand cursor and the
+     * focus ring went on saying the control was live. A switch that invites a flip and then
+     * ignores it reads as a broken app rather than a setting somebody else decided.
+     */
+    @Override
+    public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        setCursor(Cursor.getPredefinedCursor(
+                enabled ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+        setFocusable(enabled);
+        repaint();
+    }
+
     public boolean isSelected() {
         return selected;
     }
@@ -123,6 +140,12 @@ public class ToggleSwitch extends JComponent {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
+
+            if (!isEnabled()) {
+                // Faded rather than recoloured, so it still reads as the same control showing the
+                // same value - which it is; it is just not this user's to change.
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.45f));
+            }
 
             Color off = Theme.isDark() ? Theme.divider() : new Color(0xD5D8DC);
             Color track = Motion.lerp(off, Theme.accent(), position);

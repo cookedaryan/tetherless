@@ -201,6 +201,55 @@ public class DesktopConfigTest {
         }
     }
 
+    /**
+     * The headline example of the precedence chain, and the one rung that had no test.
+     *
+     * <p>An installation that puts {@code updates=false} in {@code config.properties} has decided
+     * for this machine. The settings toggle sits below that deliberately and must not be able to
+     * turn the check back on.
+     */
+    @Test
+    public void theConfigFileBeatsThePreference() throws Exception {
+        File dir = temp.newFolder("profile");
+        writeConfig(dir, "updates=false\n");
+        DesktopConfig.setUpdateChecksPreference(true);
+
+        assertFalse("config.properties was overridden by the settings toggle",
+                DesktopConfig.load(dir, new String[0]).updateChecks());
+    }
+
+    /**
+     * What the settings sheet has to render.
+     *
+     * <p>The sheet used to show the stored preference, so a client with {@code updates=false} in
+     * its configuration showed the switch <strong>on</strong> while never checking for anything.
+     * It needs both halves: the value actually in force, and whether a rung above the toggle is
+     * the one deciding it - because in that case flipping the switch would do nothing.
+     */
+    @Test
+    public void aConfiguredSettingIsReportedAsPinnedAndInForce() throws Exception {
+        File dir = temp.newFolder("pinned");
+        writeConfig(dir, "updates=false\n");
+        DesktopConfig.setUpdateChecksPreference(true);
+
+        DesktopConfig.load(dir, new String[0]);
+
+        assertEquals(Boolean.FALSE, DesktopConfig.updateChecksOverride());
+        assertFalse("the sheet would show a switch that is on for a client that never checks",
+                DesktopConfig.effectiveUpdateChecks());
+    }
+
+    /** With nothing above it, the toggle is what decides and the sheet may offer it. */
+    @Test
+    public void nothingIsPinnedWhenOnlyTheToggleHasAnOpinion() throws Exception {
+        DesktopConfig.setUpdateChecksPreference(false);
+
+        DesktopConfig.load(temp.newFolder("plain"), new String[0]);
+
+        assertNull(DesktopConfig.updateChecksOverride());
+        assertFalse(DesktopConfig.effectiveUpdateChecks());
+    }
+
     @Test
     public void thePreferenceDecidesWhenNothingElseIsConfigured() {
         DesktopConfig.setUpdateChecksPreference(false);
