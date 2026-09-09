@@ -112,6 +112,11 @@ public final class SidePanel extends JPanel {
 
         layers.add(scrim, JLayeredPane.MODAL_LAYER);
         layers.add(this, JLayeredPane.MODAL_LAYER);
+        // Within one layer, position 0 is the top and add() appends to the bottom - so without
+        // this the scrim sits over the sheet, dimming it and eating every click it should have
+        // received. The scrim closes on click, so the symptom is a panel that looks faded and
+        // whose controls silently do nothing.
+        layers.setPosition(this, 0);
 
         // Keep it filling the height, and against its edge, if the window is resized while open.
         resizeListener = new ComponentAdapter() {
