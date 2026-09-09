@@ -111,6 +111,8 @@ public class MessageBubble extends JComponent {
             return null;
         }
         switch (message.getStatus()) {
+            case PENDING:
+                return TgIcons.clock(13);
             case SENT:
                 return TgIcons.check(15);
             case DELIVERED:

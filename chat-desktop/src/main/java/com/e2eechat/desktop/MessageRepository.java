@@ -159,6 +159,53 @@ public class MessageRepository {
         return messages;
     }
 
+    /**
+     * The outbox: everything this user has written to {@code peerId} that never reached the relay,
+     * oldest first so a flush replays them in the order they were typed.
+     */
+    public List<ChatMessage> getPending(String self, String peerId) {
+        String sql = "SELECT message_id, sender, receiver, content, timestamp, status, "
+                + "       reply_to_id, reply_to_sender, reply_to_preview FROM messages "
+                + "WHERE sender = ? AND receiver = ? AND status = 'PENDING' "
+                + "ORDER BY timestamp ASC";
+        List<ChatMessage> messages = new ArrayList<>();
+
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, self);
+            pstmt.setString(2, peerId);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    messages.add(readRow(rs));
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Failed to retrieve pending messages", e);
+        }
+        return messages;
+    }
+
+    /** Every peer this user has something queued for, so a reconnect can drain the lot. */
+    public List<String> getPendingPeers(String self) {
+        String sql = "SELECT DISTINCT receiver FROM messages "
+                + "WHERE sender = ? AND status = 'PENDING'";
+        List<String> peers = new ArrayList<>();
+
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, self);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    peers.add(rs.getString("receiver"));
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Failed to retrieve peers with pending messages", e);
+        }
+        return peers;
+    }
+
     private ChatMessage readRow(ResultSet rs) throws Exception {
         String statusName = rs.getString("status");
         ChatMessage.Status status;

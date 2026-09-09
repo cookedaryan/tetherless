@@ -56,6 +56,7 @@ public class ChatClient implements MessageListener {
     private String relayHost;
     private int relayPort;
     private final List<MessageListener> listeners = new CopyOnWriteArrayList<>();
+    private final List<OutboxListener> outboxListeners = new CopyOnWriteArrayList<>();
     private final List<Message> earlyMessageBuffer = new ArrayList<>();
 
     private volatile String localDisplayName;
@@ -116,6 +117,14 @@ public class ChatClient implements MessageListener {
             }
             earlyMessageBuffer.clear();
         }
+    }
+
+    public void addOutboxListener(OutboxListener listener) {
+        outboxListeners.add(listener);
+    }
+
+    public void removeOutboxListener(OutboxListener listener) {
+        outboxListeners.remove(listener);
     }
 
     public void removeMessageListener(MessageListener listener) {
@@ -235,6 +244,9 @@ public class ChatClient implements MessageListener {
                 if (msg.getSenderId().equals(currentPeerId)) {
                     notifySessionStateChanged(Session.State.ESTABLISHED);
                 }
+                // Whether or not this is the conversation on screen: the queue belongs to the
+                // peer, not to whichever chat happens to be open.
+                flushPending(msg.getSenderId());
                 break;
 
             case PEER_KEY_CHANGED:
@@ -319,6 +331,11 @@ public class ChatClient implements MessageListener {
     @Override
     public void onConnectionStateChanged(ConnectionState state) {
         connectionState = state;
+        if (state == ConnectionState.CONNECTED) {
+            // Sessions that survived the outage can drain immediately; the rest drain from
+            // SESSION_ESTABLISHED as each handshake completes.
+            flushAllPending();
+        }
         for (MessageListener listener : listeners) {
             listener.onConnectionStateChanged(state);
         }
@@ -349,28 +366,35 @@ public class ChatClient implements MessageListener {
     /**
      * Encrypts, signs and dispatches a text message, optionally quoting {@code replyTo}.
      *
-     * @return the generated message id, used to correlate the delivery acknowledgement back to the
-     *         bubble, or {@code null} if the session was not established and nothing was sent
+     * <p>Returns the message as it was recorded, so the window draws the row that exists rather
+     * than reconstructing one beside it - the bubble's timestamp and delivery state are then the
+     * stored ones, not a second guess made a moment later.
+     *
+     * @return the recorded message, or {@code null} only when there is no conversation to send to
      */
-    public String sendMessage(String text, ChatMessage replyTo) {
+    public ChatMessage sendMessage(String text, ChatMessage replyTo) {
         if (currentPeerId == null) {
-            return null;
-        }
-        if (!secureChat.isEstablished(currentPeerId)) {
-            // No plaintext fallback: refusing to send is the only safe outcome.
-            logger.warn("Cannot send message, session not established");
             return null;
         }
 
         String peerId = currentPeerId;
+        long timestamp = System.currentTimeMillis();
+        String messageId = UUID.randomUUID().toString();
+        String replyId = replyTo == null ? null : replyTo.getMessageId();
+        String replySender = replyTo == null ? null : replyTo.getSender();
+        String replyPreview = replyTo == null ? null : replyTo.getContent();
+
+        // No session yet - the peer has never been reached, or is not reachable now. The message is
+        // written down rather than dropped, and the handshake is started so the outbox has
+        // something to drain into. Never a plaintext fallback; queuing is the safe outcome.
+        if (!secureChat.isEstablished(peerId)) {
+            logger.info("Queuing message for {}: no session yet", PeerId.shortForm(peerId));
+            startSecureChat(peerId);
+            return record(messageId, peerId, text, timestamp, ChatMessage.Status.PENDING,
+                    replyId, replySender, replyPreview);
+        }
+
         try {
-            long timestamp = System.currentTimeMillis();
-            String messageId = UUID.randomUUID().toString();
-
-            String replyId = replyTo == null ? null : replyTo.getMessageId();
-            String replySender = replyTo == null ? null : replyTo.getSender();
-            String replyPreview = replyTo == null ? null : replyTo.getContent();
-
             byte[] body = Body.encode(text, replyId, replySender, replyPreview)
                     .getBytes(StandardCharsets.UTF_8);
 
@@ -380,20 +404,89 @@ public class ChatClient implements MessageListener {
             Message encrypted = secureChat.encrypt(peerId, messageId, body);
 
             boolean accepted = transmit(encrypted);
-            messageRepository.saveMessage(messageId, clientId, peerId, text, timestamp,
-                    accepted ? ChatMessage.Status.SENT : ChatMessage.Status.FAILED,
-                    replyId, replySender, replyPreview, true);
-            return messageId;
+            return record(messageId, peerId, text, timestamp,
+                    accepted ? ChatMessage.Status.SENT : ChatMessage.Status.PENDING,
+                    replyId, replySender, replyPreview);
         } catch (SessionRenewalRequiredException e) {
             // Not a failure. The key reached its send budget and a fresh handshake is already on
             // its way out; the session state carries that to the window, which shows the chat
             // re-establishing and re-enables itself when the new key lands.
             logger.info("Renewing the key for {}", PeerId.shortForm(peerId));
+            // Queued, not discarded: the renewal is already in flight and the outbox drains as
+            // soon as the new key lands, so what was typed survives the rekey.
+            ChatMessage queued = record(messageId, peerId, text, timestamp,
+                    ChatMessage.Status.PENDING, replyId, replySender, replyPreview);
+            // The handshake goes out from inside encrypt(), so the reply can land - and the
+            // flush-on-establish fire - before this row exists. Draining here too means the
+            // message is not left queued behind a session that is already back.
+            flushPending(peerId);
             notifySessionStateChanged(secureChat.stateOf(peerId));
-            return null;
+            return queued;
         } catch (Exception e) {
             logger.error("Error creating/sending encrypted message", e);
-            return null;
+            return record(messageId, peerId, text, timestamp, ChatMessage.Status.FAILED,
+                    replyId, replySender, replyPreview);
+        }
+    }
+
+    /** Writes an outgoing row and hands back the object the window will draw. */
+    private ChatMessage record(String messageId, String peerId, String text, long timestamp,
+                               ChatMessage.Status status, String replyId, String replySender,
+                               String replyPreview) {
+        messageRepository.saveMessage(messageId, clientId, peerId, text, timestamp, status,
+                replyId, replySender, replyPreview, true);
+        return new ChatMessage(messageId, clientId, peerId, text, timestamp, status,
+                replyId, replySender, replyPreview);
+    }
+
+    /**
+     * Sends anything queued for {@code peerId}, oldest first.
+     *
+     * <p>Called when a session is established and after the transport reconnects. Each message is
+     * encrypted now rather than when it was typed: the session it was queued under may be long
+     * gone, and the stored row is the plaintext the user wrote, not a frame.
+     *
+     * <p>Stops at the first refusal. The rest stay queued, and order is preserved - draining past
+     * a failure would deliver a conversation out of sequence.
+     */
+    private void flushPending(String peerId) {
+        if (!secureChat.isEstablished(peerId)) {
+            return;
+        }
+        List<ChatMessage> pending = messageRepository.getPending(clientId, peerId);
+        if (pending.isEmpty()) {
+            return;
+        }
+        logger.info("Flushing {} queued message(s) for {}",
+                pending.size(), PeerId.shortForm(peerId));
+
+        for (ChatMessage queued : pending) {
+            try {
+                byte[] body = Body.encode(queued.getContent(), queued.getReplyToId(),
+                        queued.getReplyToSender(), queued.getReplyToPreview())
+                        .getBytes(StandardCharsets.UTF_8);
+                Message encrypted = secureChat.encrypt(peerId, queued.getMessageId(), body);
+                if (!transmit(encrypted)) {
+                    return;
+                }
+                messageRepository.updateStatus(queued.getMessageId(), ChatMessage.Status.SENT);
+                for (OutboxListener listener : outboxListeners) {
+                    listener.onQueuedMessageSent(peerId, queued.getMessageId());
+                }
+            } catch (SessionRenewalRequiredException e) {
+                // The rekey is in flight; the rest of the queue waits for it.
+                return;
+            } catch (Exception e) {
+                logger.error("Failed to flush a queued message", e);
+                return;
+            }
+        }
+    }
+
+    /** Drains every peer's outbox. Used when the transport comes back. */
+    private void flushAllPending() {
+        for (String peerId : messageRepository.getPendingPeers(clientId)) {
+            flushPending(peerId);
         }
     }
 

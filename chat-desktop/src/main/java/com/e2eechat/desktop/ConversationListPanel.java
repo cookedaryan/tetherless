@@ -671,8 +671,18 @@ public class ConversationListPanel extends JLayeredPane {
             // Outgoing preview carries the delivery tick, as it does in Telegram.
             int previewX = textX;
             if (conversation.isLastFromSelf() && !conversation.getLastMessage().isEmpty()) {
-                Icon tick = conversation.getLastStatus() == ChatMessage.Status.SENT
-                        ? TgIcons.check(15) : TgIcons.doubleCheck(15);
+                Icon tick;
+                switch (conversation.getLastStatus()) {
+                    case PENDING:
+                        tick = TgIcons.clock(13);
+                        break;
+                    case SENT:
+                        tick = TgIcons.check(15);
+                        break;
+                    default:
+                        tick = TgIcons.doubleCheck(15);
+                        break;
+                }
                 TgIcons.tinted(tick, Theme.tick()).paintIcon(this, g2, previewX, 36);
                 previewX += tick.getIconWidth() + 4;
             }

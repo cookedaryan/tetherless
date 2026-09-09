@@ -109,9 +109,10 @@ final class HeadlessClient implements AutoCloseable {
         client.setCurrentPeerId(peerId);
     }
 
-    /** Returns the message id, or null when the session was not established and nothing went out. */
+    /** Returns the message id, or null when there was no conversation to send to. */
     String send(String text) {
-        return client.sendMessage(text, null);
+        com.e2eechat.desktop.ChatMessage sent = client.sendMessage(text, null);
+        return sent == null ? null : sent.getMessageId();
     }
 
     /** Blocks until the relay connection is up. */

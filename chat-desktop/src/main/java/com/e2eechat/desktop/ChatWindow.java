@@ -42,7 +42,8 @@ import java.util.List;
  * conversation reaches {@link Session.State#ESTABLISHED} — there is deliberately no plaintext
  * fallback, so a failed handshake means no send rather than an unencrypted send.
  */
-public class ChatWindow extends JFrame implements MessageListener, SessionStateListener {
+public class ChatWindow extends JFrame
+        implements MessageListener, SessionStateListener, OutboxListener {
 
     /** A typing notice from a peer expires if they go quiet, matching Telegram's own timeout. */
     private static final int TYPING_EXPIRY_MS = 6000;
@@ -113,6 +114,7 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
         applyTheme();
 
         client.addMessageListener(this);
+        client.addOutboxListener(this);
 
         // Fire and forget. The check runs off the event thread and stays silent unless there is a
         // newer release, so nothing here can delay the window appearing.
@@ -197,22 +199,21 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
             return;
         }
         ChatMessage replyTo = composer.getReplyTarget();
-        String messageId = client.sendMessage(text, replyTo);
-        if (messageId == null) {
-            // Nothing went out. Put the text back rather than letting it vanish - the header says
-            // why, and the user should not have to retype what they just wrote.
+        ChatMessage sent = client.sendMessage(text, replyTo);
+        if (sent == null) {
+            // No conversation to send to. Put the text back rather than letting it vanish - the
+            // header says why, and the user should not have to retype what they just wrote.
             composer.restoreDraft(text);
             return;
         }
 
-        ChatMessage sent = new ChatMessage(
-                messageId, client.getClientId(), peerId, text, System.currentTimeMillis(),
-                ChatMessage.Status.SENT,
-                replyTo == null ? null : replyTo.getMessageId(),
-                replyTo == null ? null : displayNameOf(replyTo.getSender()),
-                replyTo == null ? null : replyTo.getContent());
-
-        transcript.append(sent);
+        // The stored row names the peer it replies to by id, because that is what survives a
+        // restart; the banner wants the name. Only the label differs - the id, timestamp and
+        // delivery state are the recorded ones.
+        transcript.append(replyTo == null ? sent : new ChatMessage(
+                sent.getMessageId(), sent.getSender(), sent.getReceiver(), sent.getContent(),
+                sent.getTimestamp(), sent.getStatus(), sent.getReplyToId(),
+                displayNameOf(replyTo.getSender()), sent.getReplyToPreview()));
         sidebar.notePreview(peerId, text, sent.getTimestamp(), true, false);
     }
 
@@ -330,6 +331,20 @@ public class ChatWindow extends JFrame implements MessageListener, SessionStateL
             // a chat opened during startup stays permanently un-sendable.
             header.setStatus("establishing encryption…", Theme.textSecondary(), false);
             client.startSecureChat(peerId);
+        });
+    }
+
+    /**
+     * A queued message reached the relay. Swaps its clock for a tick if that conversation is the
+     * one on screen, and refreshes the sidebar preview either way.
+     */
+    @Override
+    public void onQueuedMessageSent(String peerId, String messageId) {
+        SwingUtilities.invokeLater(() -> {
+            if (transcript != null && isCurrentPeer(peerId)) {
+                transcript.updateStatus(messageId, ChatMessage.Status.SENT);
+            }
+            sidebar.reload();
         });
     }
 

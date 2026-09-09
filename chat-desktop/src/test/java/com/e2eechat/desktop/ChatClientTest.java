@@ -33,7 +33,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -70,6 +69,9 @@ public class ChatClientTest {
     /** Every status advance Alice's repository was asked to make, as "id=STATUS". */
     private final List<String> statusUpdates = new ArrayList<>();
 
+    /** Alice's outbox: messages written down but not yet handed to the transport. */
+    private final List<ChatMessage> aliceOutbox = new ArrayList<>();
+
     private String aliceId;
     private String bobId;
 
@@ -96,7 +98,7 @@ public class ChatClientTest {
 
         aliceClient = new ChatClient(aliceId, aliceKeys,
                 new SessionManager(aliceId, aliceLookup),
-                recordingRepository(dbKey, aliceSaved, savedStatuses, statusUpdates),
+                recordingRepository(dbKey, aliceSaved, savedStatuses, statusUpdates, aliceOutbox),
                 keyStore(aliceKeys, bobKeys.getPublic()),
                 new PeerDirectory(aliceDir), "Alice");
         bobClient = new ChatClient(bobId, bobKeys,
@@ -121,10 +123,17 @@ public class ChatClientTest {
         };
     }
 
-    /** Records what was stored, so a test can tell a message that went from one that did not. */
+    /**
+     * Records what was stored, so a test can tell a message that went from one that did not.
+     *
+     * <p>It also keeps a real outbox: rows saved as {@code PENDING} are held until something
+     * advances them, which is what lets a test watch the queue actually drain rather than only
+     * watch it fill.
+     */
     private static MessageRepository recordingRepository(SecretKey dbKey, List<String> saved,
                                                           List<String> statuses,
-                                                          List<String> statusUpdates) {
+                                                          List<String> statusUpdates,
+                                                          List<ChatMessage> outbox) {
         return new MessageRepository(":memory:", dbKey) {
             @Override
             public void saveMessage(String sender, String receiver, String content, long timestamp) {
@@ -137,11 +146,40 @@ public class ChatClientTest {
                                     String replyToSender, String replyToPreview, boolean markRead) {
                 saved.add(content);
                 statuses.add(status.name());
+                if (status == ChatMessage.Status.PENDING) {
+                    outbox.add(new ChatMessage(messageId, sender, receiver, content, timestamp,
+                            status, replyToId, replyToSender, replyToPreview));
+                }
             }
 
             @Override
             public void updateStatus(String messageId, ChatMessage.Status status) {
                 statusUpdates.add(messageId + "=" + status.name());
+                if (status != ChatMessage.Status.PENDING) {
+                    outbox.removeIf(m -> m.getMessageId().equals(messageId));
+                }
+            }
+
+            @Override
+            public List<ChatMessage> getPending(String self, String peerId) {
+                List<ChatMessage> queued = new ArrayList<>();
+                for (ChatMessage m : outbox) {
+                    if (m.getSender().equals(self) && m.getReceiver().equals(peerId)) {
+                        queued.add(m);
+                    }
+                }
+                return queued;
+            }
+
+            @Override
+            public List<String> getPendingPeers(String self) {
+                List<String> peers = new ArrayList<>();
+                for (ChatMessage m : outbox) {
+                    if (m.getSender().equals(self) && !peers.contains(m.getReceiver())) {
+                        peers.add(m.getReceiver());
+                    }
+                }
+                return peers;
             }
         };
     }
@@ -323,54 +361,71 @@ public class ChatClientTest {
         spendSendBudget(aliceClient, bobId);
         aliceToBob.clear();
 
-        String messageId = aliceClient.sendMessage("this one does not go", null);
+        ChatMessage sentMessage = aliceClient.sendMessage("this one does not go", null);
+        String messageId = sentMessage == null ? null : sentMessage.getMessageId();
 
-        assertNull("a message was reported sent under a spent key", messageId);
-        for (Message frame : aliceToBob) {
-            assertNotEquals("a text message went out under a spent key",
-                    MessageType.TEXT_MESSAGE, frame.getType());
-        }
+        assertNotNull("the message should be queued, not discarded", messageId);
         assertTrue("no handshake was started to renew the key", aliceToBob.size() >= 2);
         assertEquals(MessageType.HELLO, aliceToBob.get(0).getType());
         assertEquals(MessageType.KEY_EXCHANGE_INIT, aliceToBob.get(1).getType());
-    }
 
-    /** The renewal completes by itself, and sending works again afterwards. */
-    @Test
-    public void sendingWorksAgainOnceTheRenewalCompletes() {
-        aliceClient.startSecureChat(bobId);
-        spendSendBudget(aliceClient, bobId);
-
-        assertNull(aliceClient.sendMessage("this one does not go", null));
-
-        // The fake transport hands frames straight to Bob, so by now Bob has answered and Alice
-        // has adopted the new key.
-        assertEquals(Session.State.ESTABLISHED, aliceClient.getSession().getState());
-
-        List<Message> deliveredToBob = recordDeliveries(bobClient);
-        assertNotNull("sending did not recover after the renewal",
-                aliceClient.sendMessage("this one does", null));
-        assertEquals(1, deliveredToBob.size());
-        assertEquals("this one does",
-                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+        // Text may follow, but only once the new key is negotiated: the queue drains after the
+        // renewal. What must never happen is a message going out ahead of that handshake, which
+        // would mean it was encrypted under the exhausted key.
+        for (int i = 0; i < aliceToBob.size(); i++) {
+            if (aliceToBob.get(i).getType() == MessageType.KEY_EXCHANGE_INIT) {
+                break;
+            }
+            assertNotEquals("a text message went out under a spent key",
+                    MessageType.TEXT_MESSAGE, aliceToBob.get(i).getType());
+        }
     }
 
     /**
-     * Nothing is written until the message has actually been encrypted.
+     * The renewal completes by itself, and what was typed during it is delivered rather than lost.
+     *
+     * <p>The message sent under the spent key used to be discarded outright. It is now queued, and
+     * the session coming back drains the queue, so the user does not have to retype it.
+     */
+    @Test
+    public void aMessageTypedDuringARenewalIsDeliveredWhenItCompletes() {
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+        aliceClient.startSecureChat(bobId);
+        spendSendBudget(aliceClient, bobId);
+
+        assertNotNull(aliceClient.sendMessage("typed during the renewal", null));
+
+        // The fake transport hands frames straight to Bob, so by now Bob has answered, Alice has
+        // adopted the new key, and the queue has drained on the back of that.
+        assertEquals(Session.State.ESTABLISHED, aliceClient.getSession().getState());
+        assertEquals("the queued message never reached Bob", 1, deliveredToBob.size());
+        assertEquals("typed during the renewal",
+                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+
+        assertNotNull("sending did not recover after the renewal",
+                aliceClient.sendMessage("this one does", null));
+        assertEquals(2, deliveredToBob.size());
+    }
+
+    /**
+     * A message that could not be encrypted is never recorded as sent.
      *
      * <p>The row used to be saved first, so a send that then failed left history claiming a message
-     * had been sent when nothing ever left the machine.
+     * had been sent when nothing ever left the machine. It is now written as PENDING - recorded so
+     * it is not lost, but never as SENT until the transport has actually taken it.
      */
     @Test
     public void aMessageThatCannotBeEncryptedIsNotRecordedAsSent() {
         aliceClient.startSecureChat(bobId);
         spendSendBudget(aliceClient, bobId);
-        aliceSaved.clear();
+        savedStatuses.clear();
 
-        assertNull(aliceClient.sendMessage("never encrypted", null));
+        assertNotNull(aliceClient.sendMessage("never encrypted", null));
 
-        assertTrue("a message that never went out was recorded as sent: " + aliceSaved,
-                aliceSaved.isEmpty());
+        assertFalse("nothing was written down at all", savedStatuses.isEmpty());
+        assertFalse("a message that never went out was recorded as sent",
+                savedStatuses.contains("SENT"));
+        assertEquals("PENDING", savedStatuses.get(0));
     }
 
     @Test
@@ -385,23 +440,66 @@ public class ChatClientTest {
     }
 
     /**
-     * A send the transport refuses is recorded as failed, so the bubble can say so.
+     * A send the transport refuses is queued rather than abandoned.
      *
-     * <p>MessageBubble has always drawn a red tick for FAILED and nothing ever set it: a message
-     * that never left the machine looked exactly like one that did.
+     * <p>It used to be recorded FAILED, which is a dead end: the transport being down is the most
+     * ordinary reason a send does not go, and it is precisely the case retrying fixes.
      */
     @Test
-    public void aSendTheTransportRefusesIsRecordedAsFailed() throws Exception {
+    public void aSendTheTransportRefusesIsQueuedForRetry() throws Exception {
         aliceClient.startSecureChat(bobId);
         refuseAliceTransport();
         aliceSaved.clear();
         savedStatuses.clear();
 
-        String messageId = aliceClient.sendMessage("this one does not leave", null);
+        ChatMessage sentMessage = aliceClient.sendMessage("this one does not leave", null);
+        String messageId = sentMessage == null ? null : sentMessage.getMessageId();
 
         assertNotNull("the message should still get an id and a bubble", messageId);
         assertEquals(1, savedStatuses.size());
-        assertEquals("FAILED", savedStatuses.get(0));
+        assertEquals("PENDING", savedStatuses.get(0));
+    }
+
+    /**
+     * Writing to a peer there is no session with queues the message and starts the handshake.
+     *
+     * <p>This is the case that used to lose text outright: sendMessage returned null, no row was
+     * written, and what had been typed was simply gone from the window it was typed into.
+     */
+    @Test
+    public void aMessageToAPeerWithNoSessionIsQueuedRatherThanLost() {
+        aliceClient.setCurrentPeerId(bobId);
+        aliceSaved.clear();
+        savedStatuses.clear();
+
+        ChatMessage sentMessage = aliceClient.sendMessage("nobody has shaken hands yet", null);
+        String messageId = sentMessage == null ? null : sentMessage.getMessageId();
+
+        assertNotNull("the message was dropped instead of queued", messageId);
+        assertEquals(1, aliceSaved.size());
+        assertEquals("nobody has shaken hands yet", aliceSaved.get(0));
+        assertEquals("PENDING", savedStatuses.get(0));
+    }
+
+    /** The queue drains in the order it was filled, once the session comes up. */
+    @Test
+    public void aQueueDrainsInOrderWhenTheSessionIsEstablished() throws Exception {
+        aliceClient.startSecureChat(bobId);
+        refuseAliceTransport();
+        aliceClient.sendMessage("first", null);
+        aliceClient.sendMessage("second", null);
+        assertEquals(2, aliceOutbox.size());
+
+        List<Message> deliveredToBob = recordDeliveries(bobClient);
+        restoreAliceTransport();
+        aliceClient.onConnectionStateChanged(ConnectionState.CONNECTED);
+
+        assertEquals("the queue did not drain", 2, deliveredToBob.size());
+        assertEquals("first",
+                new String(deliveredToBob.get(0).getPayload(), StandardCharsets.UTF_8));
+        assertEquals("second",
+                new String(deliveredToBob.get(1).getPayload(), StandardCharsets.UTF_8));
+        assertTrue("the outbox was not emptied", aliceOutbox.isEmpty());
     }
 
     @Test
@@ -426,11 +524,17 @@ public class ChatClientTest {
         aliceClient.startSecureChat(bobId);
         statusUpdates.clear();
 
-        String messageId = aliceClient.sendMessage("did this arrive", null);
+        ChatMessage sentMessage = aliceClient.sendMessage("did this arrive", null);
+        String messageId = sentMessage == null ? null : sentMessage.getMessageId();
 
         assertNotNull(messageId);
         assertEquals(1, statusUpdates.size());
         assertEquals(messageId + "=DELIVERED", statusUpdates.get(0));
+    }
+
+    /** Puts Alice back on the fixture's transport, as a reconnect would. */
+    private void restoreAliceTransport() throws Exception {
+        injectTransport(aliceClient, aliceToBob, bobClient);
     }
 
     /** Swaps Alice's transport for one that refuses everything, as a closed connection would. */
