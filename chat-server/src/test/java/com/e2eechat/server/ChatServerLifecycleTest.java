@@ -116,7 +116,7 @@ public class ChatServerLifecycleTest {
                 .setType(MessageType.TEXT_MESSAGE)
                 .setSenderId(id("userA"))
                 .setReceiverId(id("userB"))
-                .setPayload("Hello".getBytes())
+                .setPayload("Hello".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .setIv(new byte[12])
                 .setMessageId(UUID.randomUUID().toString())
                 .setTimestamp(System.currentTimeMillis())
@@ -126,7 +126,7 @@ public class ChatServerLifecycleTest {
         // Should receive an ERROR message
         Message response = r1.readMessage();
         assertEquals(MessageType.ERROR, response.getType());
-        assertArrayEquals("RECIPIENT_OFFLINE".getBytes(), response.getPayload());
+        assertArrayEquals("RECIPIENT_OFFLINE".getBytes(java.nio.charset.StandardCharsets.UTF_8), response.getPayload());
 
         s1.close();
     }

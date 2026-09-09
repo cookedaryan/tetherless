@@ -346,13 +346,21 @@ which is a real limitation regardless of how thorough they are.
 
 SpotBugs with the `find-sec-bugs` plugin runs on every build of every JVM module, at high
 confidence, and a finding fails the build. **There are zero unresolved findings at that level.**
-Three suppressions exist, each scoped to a single pattern or method and each carrying its reason in
-`config/spotbugs/exclude.xml`; there is no blanket exclusion, because on a security detector a
-pattern-wide suppression silently covers code nobody has looked at yet.
+**One** suppression exists, in `config/spotbugs/exclude.xml`, scoped to a single class, method and
+pattern and carrying its reason.
+
+This section previously claimed three such suppressions and no blanket exclusion. That was wrong,
+and wrong in the direction that matters: two of the three were pattern-wide. Removing them found a
+real defect the detector had been reporting all along — the relay encoded an `ID_TAKEN` wire payload
+with the platform default charset, while the suppression's own comment asserted the only remaining
+hits were log and console output. The `OBJECT_DESERIALIZATION` exclusion turned out to suppress
+nothing whatever. A suppression that covers nothing is not narrow, it is dead, and both are now
+gone rather than rescoped. Payload encoding is explicit everywhere, in tests as well as in the
+clients and the relay, so the pattern needs no exclusion to stay quiet.
 
 High confidence is the threshold for failing a build, not the limit of what gets looked at.
-`./gradlew check -PspotbugsAll` lowers it and reports everything, which as of this review is 174
-further findings. They were triaged rather than filed away:
+`./gradlew check -PspotbugsAll` lowers it and reports everything: as of this review, 216 findings
+in main sources and 167 in tests. They were triaged rather than filed away:
 
 - The bulk — log injection via peer-controlled ids, and broad `catch (Exception)` — are on paths
   where the id has already been validated as 32 hex characters or replaced by `Redact.id`, so there

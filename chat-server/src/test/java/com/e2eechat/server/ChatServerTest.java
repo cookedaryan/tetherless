@@ -95,7 +95,7 @@ public class ChatServerTest {
         Message answer = mallory.awaitMessage(2000);
         assertNotNull("the relay must answer a refused registration", answer);
         assertEquals(MessageType.ERROR, answer.getType());
-        assertEquals("ID_DOES_NOT_MATCH_KEY", new String(answer.getPayload()));
+        assertEquals("ID_DOES_NOT_MATCH_KEY", new String(answer.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
         mallory.close();
 
         // And the real Alice is not locked out by the attempt.
@@ -130,7 +130,7 @@ public class ChatServerTest {
         Message answer = mallory.awaitMessage(2000);
         assertNotNull("the relay must answer a spoofed frame", answer);
         assertEquals(MessageType.ERROR, answer.getType());
-        assertEquals("SENDER_MISMATCH", new String(answer.getPayload()));
+        assertEquals("SENDER_MISMATCH", new String(answer.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
 
         assertNull("nothing forged may reach the addressee", bob.awaitMessage(500));
 
@@ -173,7 +173,7 @@ public class ChatServerTest {
         Message answer = impostor.awaitMessage(2000);
         assertNotNull(answer);
         assertEquals(MessageType.ERROR, answer.getType());
-        assertEquals("ID_TAKEN", new String(answer.getPayload()));
+        assertEquals("ID_TAKEN", new String(answer.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
 
         first.close();
         impostor.close();
@@ -195,7 +195,7 @@ public class ChatServerTest {
         Message msg = bob.awaitMessage(1000);
         assertNotNull("Bob should receive a message", msg);
         assertEquals(alice.peerId(), msg.getSenderId());
-        assertEquals("Hello Bob!", new String(msg.getPayload()));
+        assertEquals("Hello Bob!", new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
 
         alice.close();
         bob.close();
@@ -212,7 +212,7 @@ public class ChatServerTest {
         Message msg = alice.awaitMessage(1000);
         assertNotNull("Alice should receive an error", msg);
         assertEquals(MessageType.ERROR, msg.getType());
-        assertEquals("RECIPIENT_OFFLINE", new String(msg.getPayload()));
+        assertEquals("RECIPIENT_OFFLINE", new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
         
         alice.close();
     }
@@ -309,7 +309,7 @@ public class ChatServerTest {
         Message error = bob.awaitMessage(1000);
         assertNotNull(error);
         assertEquals(MessageType.ERROR, error.getType());
-        assertEquals("RECIPIENT_OFFLINE", new String(error.getPayload()));
+        assertEquals("RECIPIENT_OFFLINE", new String(error.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
         
         bob.close();
     }

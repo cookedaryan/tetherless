@@ -253,7 +253,8 @@ public class ClientSession implements Runnable {
                                     .setType(MessageType.ERROR)
                                     .setSenderId("SERVER")
                                     .setReceiverId(clientId)
-                                    .setPayload("ID_TAKEN".getBytes())
+                                    .setPayload("ID_TAKEN".getBytes(
+                                            java.nio.charset.StandardCharsets.UTF_8))
                                     .setMessageId(UUID.randomUUID().toString())
                                     .setTimestamp(System.currentTimeMillis())
                                     .buildUnsigned();

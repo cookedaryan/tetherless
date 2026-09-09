@@ -87,7 +87,7 @@ public class ServerResourceLimitsTest {
         
         Message msg = r.readMessage();
         assertEquals(MessageType.ERROR, msg.getType());
-        assertEquals("TOO_MANY_CONNECTIONS", new String(msg.getPayload()));
+        assertEquals("TOO_MANY_CONNECTIONS", new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8));
         
         // Attempting to read again should yield EOF because socket is closed
         try {
@@ -121,7 +121,7 @@ public class ServerResourceLimitsTest {
                         .setReceiverId(id("victim"))
                         .setMessageId(UUID.randomUUID().toString())
                         .setTimestamp(System.currentTimeMillis())
-                        .setPayload("spam".getBytes())
+                        .setPayload("spam".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                         .setIv(new byte[12])
                         .setSignature(new byte[32])
                         .build();
@@ -137,7 +137,7 @@ public class ServerResourceLimitsTest {
         try {
             while (true) {
                 Message msg = r.readMessage();
-                if (msg.getType() == MessageType.ERROR && "RATE_LIMIT_EXCEEDED".equals(new String(msg.getPayload()))) {
+                if (msg.getType() == MessageType.ERROR && "RATE_LIMIT_EXCEEDED".equals(new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8))) {
                     rateLimited = true;
                     break;
                 }

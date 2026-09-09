@@ -85,9 +85,9 @@ public class ServerRoutingIntegrityTest {
         register(bobWriter, bobReader, "bob");
 
         // Alice sends a message to Bob
-        byte[] payload = "Top secret message".getBytes();
+        byte[] payload = "Top secret message".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         byte[] iv = new byte[12];
-        byte[] fakeSignature = "FakeSignature123".getBytes();
+        byte[] fakeSignature = "FakeSignature123".getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
         Message msg = new MessageBuilder()
                 .setType(MessageType.TEXT_MESSAGE)
@@ -160,7 +160,7 @@ public class ServerRoutingIntegrityTest {
         try {
             while (true) {
                 Message msg = bobReader.readMessage();
-                if (msg.getType() == MessageType.ERROR && new String(msg.getPayload()).equals("BUFFER_OVERFLOW")) {
+                if (msg.getType() == MessageType.ERROR && new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8).equals("BUFFER_OVERFLOW")) {
                     disconnected = true;
                     break;
                 }

@@ -11,9 +11,9 @@ public class AESUtilsTest {
         byte[] iv = AESUtils.generateIV();
         
         String originalText = "Hello, End-to-End Encryption!";
-        byte[] cipherText = AESUtils.encrypt(originalText.getBytes(), key, iv);
+        byte[] cipherText = AESUtils.encrypt(originalText.getBytes(java.nio.charset.StandardCharsets.UTF_8), key, iv);
         byte[] decryptedText = AESUtils.decrypt(cipherText, key, iv);
         
-        Assert.assertEquals(originalText, new String(decryptedText));
+        Assert.assertEquals(originalText, new String(decryptedText, java.nio.charset.StandardCharsets.UTF_8));
     }
 }

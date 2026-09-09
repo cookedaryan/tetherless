@@ -40,7 +40,7 @@ public class ControlFrameSignatureTest {
                 .setType(type)
                 .setSenderId("alice")
                 .setReceiverId("bob")
-                .setPayload("payload".getBytes())
+                .setPayload("payload".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .setMessageId(UUID.randomUUID().toString())
                 .setTimestamp(System.currentTimeMillis())
                 .buildUnsigned();

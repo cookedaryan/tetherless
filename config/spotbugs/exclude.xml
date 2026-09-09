@@ -1,28 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Every suppression here is scoped as narrowly as the filter language allows and carries the reason
-  it is safe. A blanket pattern exclusion silently covers future code the author never considered,
-  which for a security detector is how a real finding gets lost.
+  Every suppression here is scoped to a class and method and carries the reason it is safe. A
+  blanket pattern exclusion silently covers future code the author never considered, which for a
+  security detector is how a real finding gets lost.
+
+  This file used to say that and not do it. Two pattern-wide exclusions sat below the comment,
+  which is how a genuine DM_DEFAULT_ENCODING hit went unseen: the relay was encoding an ID_TAKEN
+  wire payload with the platform default charset, while the suppression's own justification claimed
+  the only remaining hits were log and console output. The OBJECT_DESERIALIZATION exclusion,
+  meanwhile, was suppressing nothing at all - the detector reports no findings without it. Both are
+  gone rather than narrowed; a suppression that covers nothing is not scoped, it is dead.
 -->
 <FindBugsFilter>
-
-    <!--
-      Java serialization was removed from the wire path by CORE-03: the protocol is an explicit
-      length-prefixed binary codec and no wire type implements Serializable. Kept because the
-      detector also fires on unrelated framework paths, and re-introducing readObject anywhere
-      should be caught by review of that change rather than by this pattern.
-    -->
-    <Match>
-        <Bug pattern="OBJECT_DESERIALIZATION" />
-    </Match>
-
-    <!--
-      Charset is specified explicitly wherever it affects the protocol or on-disk format. The
-      remaining hits are log and console output, where the platform default is what is wanted.
-    -->
-    <Match>
-        <Bug pattern="DM_DEFAULT_ENCODING" />
-    </Match>
 
     <!--
       The path here is the operator's own KEYSTORE_PASSWORD_FILE, read from the environment, a JVM

@@ -19,7 +19,7 @@ public class DHUtilsTest {
         assertTrue("Key generation should be fast (< 500ms)", (end - start) < 500);
         
         byte[] salt = new byte[32];
-        byte[] info = "tetherless-v1 aes-256-gcm".getBytes();
+        byte[] info = "tetherless-v1 aes-256-gcm".getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
         byte[] aliceShared = DHUtils.generateSharedSecret(alicePair.getPrivate(), bobPair.getPublic(), salt, info);
         byte[] bobShared = DHUtils.generateSharedSecret(bobPair.getPrivate(), alicePair.getPublic(), salt, info);

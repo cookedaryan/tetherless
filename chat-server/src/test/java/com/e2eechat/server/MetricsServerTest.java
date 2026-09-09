@@ -48,7 +48,8 @@ public class MetricsServerTest {
         int responseCode = conn.getResponseCode();
         assertTrue("Metrics server should return HTTP 200", responseCode == 200);
         
-        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(),
+                java.nio.charset.StandardCharsets.UTF_8));
         String inputLine;
         StringBuilder content = new StringBuilder();
         while ((inputLine = in.readLine()) != null) {

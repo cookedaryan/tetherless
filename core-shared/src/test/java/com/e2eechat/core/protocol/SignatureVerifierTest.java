@@ -22,7 +22,7 @@ public class SignatureVerifierTest {
                 .setSenderId("alice")
                 .setReceiverId("bob")
                 .setIv(new byte[12])
-                .setPayload("hello".getBytes())
+                .setPayload("hello".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .setTimestamp(System.currentTimeMillis())
                 .buildUnsigned();
                 
@@ -39,7 +39,7 @@ public class SignatureVerifierTest {
                 .setSenderId("alice")
                 .setReceiverId("bob")
                 .setIv(new byte[12])
-                .setPayload("hello".getBytes())
+                .setPayload("hello".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .setTimestamp(System.currentTimeMillis())
                 .buildUnsigned();
                 
@@ -59,7 +59,7 @@ public class SignatureVerifierTest {
                 .setSenderId("alice")
                 .setReceiverId("bob")
                 .setIv(new byte[12])
-                .setPayload("hello".getBytes())
+                .setPayload("hello".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .setTimestamp(System.currentTimeMillis())
                 .buildUnsigned();
                 
