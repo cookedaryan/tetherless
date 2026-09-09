@@ -186,6 +186,109 @@ intermittently again.
 
 ---
 
+## ADR-9 — A registration proves it owns the id, and proves it without a round trip
+
+**Status:** accepted.
+
+The opening `HELLO` carries the identity public key its peer id was derived from and is signed with
+the matching private key. The relay checks the binding, the signature, a sixty-second freshness
+window, and that the message id has not been used before.
+
+**Why.** The relay used to register whatever id it was asked for. A peer id is public — it is the
+thing you hand someone so they can message you — so anyone could connect as anyone. The real owner
+then got `ID_TAKEN` on their next login, for as long as the squatter held the socket, and one
+socket per victim would lock out every user whose id was known.
+
+**Why a self-signed frame rather than a challenge.** A server nonce is the stronger construction
+and it is what a fresh design should use: it binds the proof to this relay and this connection. It
+also costs a round trip before a client can register, on a path that already waits for `HELLO_ACK`,
+and it needs a new message type in a frozen protocol. The freshness window plus a remembered
+message id closes replay against *this* relay, which is the attack that matters here. The gap it
+leaves is a registration captured and replayed to a *different* relay inside the window, because
+nothing in the signature names the relay it was meant for. That is the price, and it is written
+down here rather than discovered later.
+
+**The part that was nearly wrong.** `SignatureVerifier` exempts `HELLO` from requiring a signature,
+because on the client-to-client path a `HELLO` is what introduces the key and there is nothing yet
+to check it against. Leaning on that shared policy for registration accepted an unsigned frame —
+which left matching the id as the only test, and the id is a hash of a public key that anybody can
+hold. The relay demands the signature itself. The test written for the fix is what caught it.
+
+## ADR-10 — Nonce uniqueness is a property of a key, not of a session
+
+**Status:** accepted. Recorded because the obvious "fix" here is a regression.
+
+The GCM nonce is `[direction:4][counter:8]`. The counter restarts at one whenever a session adopts
+a new key, so **the same nonce is used again under every renewed key, deliberately**.
+
+**Why that is safe.** What AES-GCM cannot survive is the same nonce twice under the same key. A
+renewal is a fresh Diffie–Hellman exchange, so the key underneath the repeated counter is a
+different key and no pair is ever reused. The direction bit — the side whose id sorts lower
+transmits on 1 — is what keeps the two peers apart within one key, since they share it and both
+count from zero.
+
+**Why it is written down.** A reader who checks nonces for global uniqueness across a session's
+lifetime will find repeats and will be tempted to stop the counter resetting. That breaks two
+things at once: the send budget would never lift, so a renewal would not restore it; and the
+receiver's replay window also restarts from one, so it would reject everything the peer sent after
+a renewal. `IvReuseTest` asserts the pair of facts that make the repeat safe — the counter restarts
+*and* the key changed — rather than the uniqueness property that sounds right and is not.
+
+**How it is known to work.** The whole hundred-thousand-message budget is now exercised, in both
+directions and across consecutive renewals. That the coverage is real was checked by mutation:
+truncating the counter to sixteen bits fails the budget test and sails past the two-hundred-message
+one it replaced.
+
+## ADR-11 — The replay counter is bounded, but a forward leap is not capped
+
+**Status:** accepted, departing from the audit's recommendation.
+
+A received counter must lie in `[1, MAX_SENDS_PER_KEY]`. It is registered in the replay window only
+after the frame decrypts.
+
+**Why the bound.** Unbounded, one frame carrying `Long.MAX_VALUE` moved the window's high-water
+mark there and put its floor beyond every counter a peer would ever send again. The conversation
+was over, permanently, and nothing about it looked like an error. A sender's counter starts at one
+and cannot pass the budget, so anything outside that range never came from an honest peer.
+
+**Why the order matters.** Registering the counter before decrypting meant a frame of pure noise
+still claimed its slot, so anything that could get a signed frame past the earlier checks could
+spend counters the genuine traffic still needed. GCM authenticates as well as encrypts: deriving
+the plaintext first means only something holding the session key can move the window.
+
+**Why there is no leap cap.** The audit also proposed refusing a counter more than one window ahead
+of the highest seen. That would break ordinary use. The relay does not queue for an absent peer, so
+a sender's counter keeps climbing while the receiver sees nothing, and a gap far larger than the
+window is normal after any outage — the cap would refuse everything sent afterwards, which is the
+same permanent silence it was meant to prevent, arriving by a different route. The range bound
+plus the decrypt-first ordering reduces the residual attack to "the peer you are talking to can
+break their own session with you", which is not an escalation over that peer simply not talking.
+
+## ADR-12 — A damaged peer key store stops the client rather than emptying it
+
+**Status:** accepted.
+
+Pinned peer keys are written by replacing the file, not overwriting it. On startup every stored
+value is decoded back into a key, and a store that is present but damaged aborts startup.
+
+**Why.** The old behaviour logged a warning and continued with no pinned keys. That reads like a
+warning and behaves like a trust reset: every contact becomes a stranger, so the next `HELLO` from
+someone known for months is trusted on sight, and the key-change alert — the one thing between a
+user and an impostor — cannot fire because there is nothing left to compare against. An attacker
+who can corrupt a file would get that for free. Refusing to start is recoverable; silently
+re-trusting everyone is not.
+
+**Why decoding each entry, not just catching the parse.** `Properties.load` reads ISO-8859-1, where
+every byte sequence is legal text, so the common corruption — a write interrupted partway — parses
+without complaint and yields entries that are merely wrong. Catching the exception guarded the rare
+case and let the likely one through. The first version of this fix did exactly that, and its test
+was what showed it.
+
+**What it costs.** A user whose store is damaged cannot start the client until they restore a backup
+or delete the file deliberately and re-verify every contact's safety number. The exception says so.
+
+---
+
 ## Decisions still open
 
 Recorded here so they are not mistaken for settled.
@@ -196,3 +299,13 @@ Recorded here so they are not mistaken for settled.
   seamless: sending is refused while it is in flight. A ratchet is still the answer.
 - **Desktop at-rest encryption covers message bodies only.** Participants, timestamps and message
   counts are in the clear in the local database.
+- **Signatures give non-repudiation, not deniability.** Every message is signed with the sender's
+  long-term RSA identity key over its ciphertext, id and timestamp. That is cryptographic proof to
+  a third party that a specific identity sent a specific message at a specific time — the opposite
+  of the off-the-record property a messenger is usually expected to have. Fixing it is not a patch:
+  it means replacing the authentication model with a deniable exchange in the style of X3DH, where
+  ephemeral keys authenticate and no long-term signature is left behind. A wire format change and a
+  break with every existing peer.
+- **The relay still learns who talks to whom.** Sender and receiver ids are in the routing header
+  in the clear, message sizes are unpadded, and nothing is queued or mixed. Metadata privacy was
+  never in scope and is not achieved by anything here.

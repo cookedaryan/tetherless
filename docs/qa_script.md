@@ -8,7 +8,7 @@ What they do not cover is the part a person has to look at: whether the window s
 at the right time, and whether a build someone *installs* behaves like a build run from a checkout.
 Every case below exists because it is invisible to the suite.
 
-Time: about forty minutes. Record the result of each case in the table at the end, and file
+Time: about an hour. Record the result of each case in the table at the end, and file
 anything that fails before tagging.
 
 ---
@@ -233,7 +233,55 @@ local time are refused. Bob should not render it.
 **Expect:** the window opens at the usual speed and nothing is shown. A slow or failed update check
 must never delay startup or produce an error.
 
-## 10 — Closing down
+## 10 — A damaged peer store
+
+*The file holding pinned peer keys is corrupt, and the client must refuse to run rather than
+forget everyone.*
+
+This is the one case here that checks a **refusal**, so run it last among the client cases and be
+ready to restore the file.
+
+1. Close Alice. Copy `peers.properties` out of her profile directory, somewhere safe.
+2. Truncate the copy in place — open the original in a hex editor and delete the last forty bytes,
+   or overwrite the tail of the last line with anything that is not valid Base64.
+3. Start Alice.
+
+**Expect:** the client **does not start**. It reports that the stored peer keys are unusable, names
+the file, and says to restore a backup or delete it and re-verify safety numbers. It must not start
+with an empty contact list.
+
+*Why this is a case a person runs.* Starting with no pinned keys is not a visible failure — the
+client would look completely normal and would trust the next `HELLO` from a long-known contact on
+sight, with no key-change warning possible because there is nothing left to compare against. The
+whole point is that the failure is loud, so the thing to check is that a user actually sees it and
+is told what to do.
+
+4. Restore the file you copied out. Start Alice.
+
+**Expect:** the client starts normally, the conversation with Bob is intact, and the safety number
+is unchanged from case 4.
+
+## 11 — The relay's metrics port
+
+*Operational counters must not be reachable from anywhere but the machine running the relay.*
+
+1. With the relay running, on the same machine: open `http://127.0.0.1:8081/metrics`.
+
+**Expect:** a plain-text list of counters.
+
+2. From another machine on the same network, or using this machine's LAN address rather than
+   loopback: `http://<lan-address>:8081/metrics`.
+
+**Expect:** the connection is **refused**. The endpoint has no authentication, so anything that can
+reach it can read who is using the relay and how much.
+
+3. Check the relay's startup log.
+
+**Expect:** a line reading `Metrics server started on 127.0.0.1:8081`. If it names any other
+address, the deployment has overridden `METRICS_HOST` and needs authentication in front of it —
+the relay logs a warning in that case, and the warning is the thing to look for.
+
+## 12 — Closing down
 
 1. With both clients connected, close Alice's window.
 
@@ -241,7 +289,7 @@ must never delay startup or produce an error.
 session open until a timeout. A client that leaves without saying so keeps the relay routing to
 somewhere nobody is listening.
 
-## 11 — Panels and theme
+## 13 — Panels and theme
 
 *Settings and Chat info used to be a dialog and a JOptionPane. Now they are sliding panels, and
 FlatLaf drives the look and feel — check both.*
@@ -284,8 +332,10 @@ FlatLaf drives the look and feel — check both.*
 | 7 | Key change | | |
 | 8 | Clock skew | | |
 | 9 | Update notice | | |
-| 10 | Closing down | | |
-| 11 | Panels and theme | | |
+| 10 | Damaged peer store | | |
+| 11 | Relay metrics port | | |
+| 12 | Closing down | | |
+| 13 | Panels and theme | | |
 
 Tested by: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; Version / commit: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; Date:
 
@@ -301,3 +351,9 @@ Tested by: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; Version / commit: &nbsp; &nbsp; &n
   degrading.
 - **No code signing.** Windows will warn about an unknown publisher on first run of the packaged
   build. That is expected for this release and is not a finding.
+- **File permissions are not checked here, and cannot be on Windows.** The identity keystore and
+  peer store are created owner-only where the filesystem supports POSIX modes. Windows has no
+  equivalent, so the tests covering it skip on this platform and this script cannot stand in for
+  them. Someone has to run `./gradlew :core-shared:test` on Linux or macOS, where
+  `PrivateFilesTest` and `JceKeyStoreManagerTest.keyMaterialIsNotReadableByOtherLocalAccounts`
+  actually execute. Until that has happened, treat the `0600` guarantee as written but unverified.

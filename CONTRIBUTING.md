@@ -66,6 +66,24 @@ heap.
 the control is wrong — in which case say so and change it deliberately — or the test found
 something.
 
+**A check must run on the receiving side, not only the sending one.** Several defects here were a
+value that one end wrote correctly and the other end never read back: a receiver id covered by a
+signature and never compared, a nonce direction bit set on every send and ignored on every receive,
+a sender id the relay forwarded without checking against the connection it arrived on. Writing a
+field is not enforcing it.
+
+**Fail closed.** A truststore that will not open, a peer key store that will not parse, a
+registration that cannot prove itself: refuse. Continuing with less security than intended, having
+logged a warning about it, is the failure mode this codebase treats as worst — it does not look
+like an incident and it is the one an attacker would choose.
+
+**Do not describe a guarantee you have not checked.** Three of the findings in the last audit were
+comments and documents asserting the opposite of what the code did — a suppression file explaining
+that it contained no blanket suppressions directly above two of them, a deployment guide promising
+hostname verification that was switched off, a security document counting three scoped exclusions
+where there were one. Prose is not enforced by anything. When you write that something holds, link
+the test that makes it hold.
+
 ---
 
 ## Changing the wire format
@@ -99,6 +117,14 @@ property.
 **Make a security test fail on purpose before you trust it.** Disable the control it covers and
 confirm the test goes red. Several tests in this repository were validated that way, and it is
 recorded where it was done.
+
+This is not a formality. During the audit remediation, three tests written *for* the fixes passed
+against the unfixed code and would have shipped as false assurance: one leaned on a signature policy
+that exempts the frame type it was testing, one assumed `Properties.load` throws on a corrupt file
+when it usually does not, and one asserted on a payload that does not carry the field being forged.
+Each was caught only by reverting the fix and watching the test stay green. Where a defect is one a
+mutation can simulate — a truncated counter, a dropped check — mutate it and confirm the failure;
+`IvReuseTest` was validated that way and says so.
 
 **Do not stub out the thing under test.** An earlier version of `ConnectionManagerTest` overrode the
 connect method entirely and opened a server socket nothing ever connected to; it passed, and covered

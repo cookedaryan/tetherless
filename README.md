@@ -54,7 +54,8 @@ matters.
 | [docs/deployment.md](docs/deployment.md) | Running a relay for real. |
 | [docs/tls_provisioning.md](docs/tls_provisioning.md) | Issuing and pinning a certificate that is not the development one. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | The rules a change has to follow, and why each exists. |
-| [docs/development_plan.md](docs/development_plan.md) | The ticket-wise plan and definition of done. |
+| [docs/development_plan.md](docs/development_plan.md) | The original ticket-wise plan. A record of what was intended, not of what exists. |
+| [context.md](context.md) | A short orientation: what the modules are, where the project stands, and the constraints that hold everywhere. |
 
 ## Getting started
 
