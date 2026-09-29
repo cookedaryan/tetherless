@@ -1,0 +1,31 @@
+plugins {
+    id 'application'
+}
+
+// The desktop client with the window taken off. Electron spawns this and speaks newline-delimited
+// JSON to it over stdin/stdout; core-shared and the chat-desktop client logic are used exactly as
+// the Swing client uses them, so the wire protocol and the crypto are never reimplemented.
+application {
+    mainClass = 'com.e2eechat.engine.EngineMain'
+}
+
+dependencies {
+    implementation libs.slf4j.api
+    implementation libs.logback.classic
+    implementation project(':core-shared')
+    // The client logic: ChatClient, MessageRepository, the stores and the key derivation. The Swing
+    // classes come along on the classpath and are simply never loaded - splitting them out is a
+    // refactor this migration does not need, since Phase 6 deletes them.
+    implementation project(':chat-desktop')
+
+    // Declared directly rather than through the version catalog: gradle/libs.versions.toml carries
+    // uncommitted local edits, and adding an entry there would collide with them.
+    //
+    // UpdateChecker reads one field out of a GitHub response with a regex and documents that adding
+    // a JSON dependency for it would be a poor trade. That reasoning does not extend to this
+    // module: the frame stream carries arbitrary message text - quotes, newlines, emoji - in both
+    // directions, and hand-rolled escaping there would be a correctness bug waiting to happen.
+    implementation 'com.google.code.gson:gson:2.11.0'
+
+    testImplementation libs.junit
+}

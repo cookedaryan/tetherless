@@ -16,6 +16,7 @@ include 'chat-server'
 // chat-mobile additionally needs an Android SDK that a server image has no business installing.
 def optional = [
         'chat-desktop': { true },
+        'desktop-engine': { true },
         'chat-desktop-compose': { true },
         'chat-mobile' : {
             System.getenv('ANDROID_HOME') || System.getenv('ANDROID_SDK_ROOT') ||
