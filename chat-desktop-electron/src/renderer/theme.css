@@ -1,0 +1,128 @@
+/*
+ * The palette from the migration plan, §11.
+ *
+ * Cool graphite surfaces with one vivid accent. The accent appears only where it carries meaning -
+ * the primary action, read ticks, the verified shield, focus. Outgoing bubbles are a lighter
+ * elevated neutral rather than a coloured one, which is the single decision that keeps a transcript
+ * reading as current.
+ */
+
+:root {
+  --page: #0b0d10;
+  --surface: #111419;
+  --surface-hover: #161a21;
+  --surface-raised: #1a1e26;
+  --chat-bg: #0e1116;
+  --bubble-in: #171b22;
+  --bubble-out: #232a35;
+  --bubble-error: #2a1a1c;
+  --text: #e8ebef;
+  --text-secondary: #8b94a3;
+  --text-tertiary: #6b7484;
+  --divider: #1e232b;
+  --accent: #22d3ee;
+  --accent-hover: #06b6d4;
+  /* Dark ink on the accent on purpose: white on vivid cyan fails contrast. */
+  --accent-ink: #062b33;
+  --tick: #22d3ee;
+  --unread: #ff6b57;
+  --unread-ink: #ffffff;
+  --danger: #ff6b6e;
+
+  --radius: 10px;
+  --radius-lg: 14px;
+  --font: 'Geist', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono: 'Geist Mono', 'Cascadia Mono', Consolas, monospace;
+}
+
+:root[data-theme='light'] {
+  --page: #f7f8fa;
+  --surface: #ffffff;
+  --surface-hover: #f0f2f5;
+  --surface-raised: #ffffff;
+  --chat-bg: #ffffff;
+  --bubble-in: #f1f3f6;
+  --bubble-out: #e4e9f0;
+  --bubble-error: #fdecec;
+  --text: #0f1319;
+  --text-secondary: #5e6875;
+  --text-tertiary: #8a93a0;
+  --divider: #e6e9ee;
+  --accent: #0891b2;
+  --accent-hover: #0e7490;
+  --accent-ink: #ffffff;
+  --tick: #0891b2;
+  --unread: #f0553d;
+  --danger: #d93a3d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  /* Nothing in this app is a document. Selecting chrome by dragging is noise. */
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.quiet {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--divider);
+}
+
+input {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  padding: 8px 2px;
+  outline: none;
+  width: 100%;
+}
+
+input:focus {
+  border-bottom: 1.5px solid var(--accent);
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.mono {
+  font-family: var(--mono);
+  user-select: text;
+}

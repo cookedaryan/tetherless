@@ -1,0 +1,35 @@
+{
+  "name": "tetherless-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tetherless desktop client. Renders the UI; the crypto lives in the Java engine.",
+  "license": "UNLICENSED",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "dev:renderer": "vite",
+    "start": "npm run build:main && electron .",
+    "engine": "cd .. && gradlew :desktop-engine:installDist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "allowScripts": {
+    "electron@31.7.7": true,
+    "esbuild@0.21.5": true
+  }
+}

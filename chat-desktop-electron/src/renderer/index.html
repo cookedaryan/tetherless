@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      The renderer displays text other people wrote. `default-src 'none'` with no remote origins
+      means a script smuggled through a message has nothing to load and nowhere to call home.
+      `connect-src 'none'` is deliberate: this window never talks to the network. The engine does,
+      over a pipe, in another process.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'"
+    />
+    <title>Tetherless</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
