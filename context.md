@@ -8,8 +8,13 @@ decrypted on the receiving one; the relay in the middle routes ciphertext and is
 - `core-shared`: protocol models, wire codec, crypto, and the session layer. Platform-neutral —
   it runs unchanged on the JVM and on Android, which is what stops the two clients drifting apart.
 - `chat-server`: the relay. Routes by receiver id, stores nothing, holds no key material.
-- `chat-desktop`: Java Swing + SQLite client.
+- `chat-desktop`: Java Swing + SQLite client. Working, and being replaced — see below.
+- `desktop-engine`: the desktop client with the window taken off. Speaks newline-delimited JSON
+  over stdin/stdout and wraps the existing `ChatClient`.
+- `chat-desktop-electron`: Electron + React front end over that engine. npm only; Gradle never
+  builds it.
 - `chat-mobile`: Android + Room client.
+- `chat-desktop-compose`: a Compose Multiplatform scaffold. Abandoned in favour of Electron.
 
 ## Key documents
 
@@ -22,6 +27,11 @@ decrypted on the receiving one; the relay in the middle routes ciphertext and is
 | [docs/deployment.md](docs/deployment.md) | Running a relay for real. |
 | [docs/qa_script.md](docs/qa_script.md) | The manual pass before tagging. |
 | [docs/development_plan.md](docs/development_plan.md) | The original ticket-wise plan. A record of what was intended, not a description of what exists. |
+| [docs/brd.md](docs/brd.md) | Why the business is building this, and what counts as success. |
+| [docs/mrd.md](docs/mrd.md) | The market, the alternatives, and where this sits among them. |
+| [docs/prd.md](docs/prd.md) | What the product does, for whom, in what order. |
+| [docs/srd.md](docs/srd.md) | Numbered, testable functional and non-functional requirements. |
+| [docs/academic_improvement_roadmap.md](docs/academic_improvement_roadmap.md) | Where the cryptography should go next, ranked by impact. |
 
 ## Current state
 
@@ -58,11 +68,107 @@ blanket static-analysis suppression had been hiding.
   that cannot prove itself: each is refused rather than worked around. Silently continuing with
   less security than intended is the failure mode this codebase treats as worst.
 
+## The desktop client is being rebuilt on Electron
+
+The Swing UI is being replaced by an Electron front end over a headless Java engine. The crypto and
+the protocol are **not** rewritten: `desktop-engine` runs the existing `ChatClient` and
+`core-shared` as a child process, and Electron talks to it over a pipe.
+
+```
+Electron renderer (React) ── preload bridge ── Electron main
+                                                    │ newline-delimited JSON over a pipe
+                                          desktop-engine (Java)
+                                                    │ core-shared, TLS 1.3 pinned
+                                              chat-server (relay)
+```
+
+**Why a pipe and not a localhost port.** The passphrase, every plaintext message and the identity
+key cross that channel. A loopback socket is reachable by every other process running as the same
+user; a pipe to a child is private to its parent by construction.
+
+**Why the renderer is locked down.** Message text is attacker-controlled input being rendered by a
+browser engine. In Electron an XSS in a transcript is remote code execution, so the renderer runs
+sandboxed with no Node, under a `default-src 'none'` CSP, and never renders message text as HTML.
+Keys and decryption stay in the Java process.
+
+The plan is `docs/superpowers/plans/2026-09-29-electron-desktop-migration.md`; the palette it uses
+is §11 of that document. Work happens on the `electron-desktop` branch.
+
+### What is built (phases 0–2 of 6)
+
+**`desktop-engine` — done.** A Gradle module wrapping the existing `ChatClient`. `EngineMain` owns
+stdin and stdout; `Engine` owns the client and is testable without a pipe. The command surface
+covers status, unlock, connect/disconnect, conversation list, history, send, session start and
+renegotiate, fingerprints, verification, read receipts, typing, search and shutdown. Events cover
+incoming messages, delivery status, typing, read receipts, connection state and errors.
+
+Unlock mirrors `Main`'s bootstrap step for step — the PKCS#12 keystore, PBKDF2 derivation and the
+migration off the old HKDF key — with failures returned as error codes instead of dialogs.
+`:desktop-engine:check` is green: seven tests, Checkstyle, SpotBugs.
+
+**`chat-desktop-electron` — scaffolded.** Main process, preload bridge, React renderer and the
+shared protocol types, with the IPC contract typed in one file all three import. The security
+baseline went in with the first commit rather than being retrofitted: sandbox and context isolation
+on, Node off, `default-src 'none'` CSP with `connect-src 'none'`, navigation refused, and a preload
+surface two functions wide. Both TypeScript projects type-check under `strict`.
+
+**Verified working:** the engine drives a full command round trip as a real process over a real
+pipe — identity created, fingerprint returned, unknown command refused, clean shutdown. Electron
+launches it, the engine initialises its database, and every line of its logging lands on stderr,
+leaving the frame stream on stdout clean. That last property is what the whole channel design rests
+on.
+
+**Not yet proven:** no message has travelled between two parties through the relay *via Electron*.
+The plumbing works; the conversation has not been demonstrated. Until it has, "it works" means the
+plumbing works.
+
+**Design decisions worth knowing, each forced by something that actually broke:**
+
+- The engine is spawned as a JVM with a wildcard classpath, not through Gradle's `.bat`. Node
+  refuses to spawn batch files without a shell since the CVE-2024-27980 hardening, and enabling one
+  would add quoting rules and a command-injection surface for nothing.
+- Command names are validated before the unlock gate, because a misspelled command otherwise
+  reported `locked` and sent the caller debugging the wrong thing.
+- A failed spawn surfaces as an `engineDown` event rather than dying as an unhandled rejection
+  behind a blank window.
+
+### What comes next (phases 3–6)
+
+| Phase | Work | Done when |
+|---|---|---|
+| **3 — Core UI** | Sign-in in all three modes, conversation list, transcript with grouping and date separators, composer, delivery ticks, typing indicator, connection banner | Two Electron clients hold a verified conversation, history surviving restart |
+| **4 — The rest of the surface** | Chat info with the safety number, verification, renegotiate, search, settings, drawer, notifications, update banner | The parity checklist in the plan passes |
+| **5 — Packaging** | `jlink` a minimal runtime, stage it beside the engine, electron-builder Windows installer | A clean Windows machine with no JDK installs and runs it |
+| **6 — Cutover** | Work the QA script against the Electron build, then retire the Swing entry point | `docs/qa_script.md` passes end to end |
+
+The immediate next step is the two-client round trip through a relay, because it is the one claim
+the current work has not earned.
+
+Two decisions remain open: whether `mono-theme` is abandoned (recommended — it repaints a client
+phase 6 deletes, in a palette no longer in use; cherry-pick only its `:core-shared` fix), and
+whether the Swing client stays buildable as a fallback until phase 6 passes (recommended).
+
 ## Working on it
 
-- `./gradlew build` — compile, Checkstyle, SpotBugs with find-sec-bugs, and the test suites.
+- **Do not run a bare `./gradlew build`.** `chat-mobile` fails on two pre-existing `android:tint`
+  lint errors that are nobody's current business, and it takes the whole build down with it. Use
+  module-scoped tasks: `:core-shared:check`, `:chat-server:check`, `:chat-desktop:check`,
+  `:desktop-engine:check`.
 - `./gradlew :chat-desktop:integTest` — the end-to-end harness: two clients, a live relay, a
   hundred messages each way, asserting the relay learned nothing.
+- Running the Electron client: `./gradlew :desktop-engine:installDist`, then
+  `npm install && npm run build && npx electron .` in `chat-desktop-electron`.
+
+### Three things that will cost you an hour each
+
+- **`dev-keystore.p12` is gitignored.** A fresh clone or worktree has no development certificate,
+  and every `ConnectionManagerTest` then fails at setup with an error that names none of this. Copy
+  it from an existing checkout or regenerate it.
+- **npm may block postinstall scripts.** Electron's binary never downloads and `electron .` then
+  claims the install is broken. Run `node node_modules/electron/install.js` directly.
+- **The engine is spawned as a JVM, not through Gradle's `.bat`.** Node refuses to spawn batch files
+  without a shell since the CVE-2024-27980 hardening, and enabling a shell there would buy a
+  command-injection surface for nothing.
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) first. The rules there are short and each one exists
   because something went wrong without it.
 
