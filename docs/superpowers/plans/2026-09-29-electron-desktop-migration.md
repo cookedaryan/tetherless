@@ -58,6 +58,27 @@ properties, and the design canvas already holds them as working HTML/CSS. See §
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Where the code lives
+
+The Electron app is **its own folder at the repository root**, with its own `package.json` and build.
+It is not a Gradle module and Gradle never builds it.
+
+```
+chat-desktop-electron/        npm + Vite + electron-builder, no Gradle
+  src/main/                   Electron main process, engine supervisor
+  src/preload/                the contextBridge surface, and nothing else
+  src/renderer/               React UI
+  src/shared/                 the IPC contract types, imported by both sides
+  resources/engine/           the jlink runtime + engine jar, staged at build time
+desktop-engine/               NEW Gradle module: the headless Java engine
+  src/main/java/.../EngineMain.java
+```
+
+The Java engine stays a **Gradle module**, because it is Java and it reuses `chat-desktop`'s logic
+and `core-shared`. Only the TypeScript/Electron side lives in `chat-desktop-electron/`. Registered in
+`settings.gradle` as an optional module alongside the others, so a relay-only build context is
+unaffected.
+
 **Why stdio and not a localhost socket.** A TCP port on loopback is reachable by every other process
 running as this user. The passphrase, the plaintext of every message and the identity key all cross
 this channel. A pipe to a child process is private to the parent by construction. Do not use a port.
@@ -157,7 +178,7 @@ supervise crashes and restart), and the Electron main process with the full secu
 ### Phase 3 — Core UI · 3–4 wk
 Sign-in (all three modes: first run, unlock, unlock-needs-name), conversation list, transcript with
 grouping and date separators, composer, delivery ticks, typing indicator, connection banner.
-The warm-mono tokens become CSS custom properties; the design canvas HTML is the reference.
+Built on the palette in §11, as CSS custom properties.
 **Exit:** two Electron clients hold a verified conversation, with history surviving restart.
 
 ### Phase 4 — Panels and the rest of the surface · 1.5–2 wk
@@ -201,11 +222,15 @@ Night/Day theme · notifications · reconnect with backoff · update banner.
 
 - **Retired:** the Swing UI (~8,400 lines), the Compose client scaffold, and the Swing-side theme
   work on the unmerged `mono-theme` branch.
-- **Survives:** the palette itself. The warm-mono tokens and the two decisions recorded in ADR-13
-  (terracotta unread badge; avatars spanning lightness) carry across unchanged as CSS variables.
-- **Decision needed:** merge `mono-theme` first so the Swing client stays coherent during the
-  migration, or abandon it. Recommendation: **merge it**. The Swing client is the only working client
-  until Phase 6, the branch is green, and ADR-13 is worth keeping in history regardless of toolkit.
+- **Also retired: the warm monochromatic palette.** The Electron client uses the new direction in
+  §11 instead. This is a reversal of an earlier decision and worth stating plainly rather than
+  letting it rot in a branch.
+- **Consequence for `mono-theme`:** its value has dropped. It repaints a Swing client that Phase 6
+  deletes, in a palette that is no longer the direction. Revised recommendation: **do not merge it.**
+  Leave the branch in place as a record, and cherry-pick only the two commits worth keeping outside
+  the theme - the dead-import fix that unblocked `:core-shared:check`, and ADR-13 if the reasoning
+  about unread badges and avatar glanceability is worth keeping in history. Everything else is now
+  work about a retired toolkit in a retired palette.
 
 ---
 
@@ -233,7 +258,85 @@ Phase 2's supervisor should log every frame in dev builds.
 
 ## 10. Open decisions
 
-1. Merge or abandon `mono-theme` (§8). Recommendation: merge.
+1. Confirm `mono-theme` is abandoned and only the `:core-shared` fix is cherry-picked (§8).
 2. Does the Swing client stay buildable during the migration as a fallback, or is it deleted at
    Phase 1? Recommendation: keep it until Phase 6 passes.
-3. React framework choice and styling approach — free choice, but no remote assets (§3).
+3. Accent colour: the recommendation in §11, or one of the two alternates beside it.
+4. React framework and styling approach — free choice, but no remote assets (§3).
+
+---
+
+## 11. Visual direction — the palette
+
+Cool graphite surfaces, near-neutral with a faint blue cast, and **one vivid accent used sparingly**.
+Deliberately not the warm monochromatic direction, and deliberately not the original Telegram blue.
+
+**The move that makes it read as current: outgoing bubbles are not coloured.** They are a lighter
+elevated neutral, and the accent is reserved for things that mean something — the primary action,
+read ticks, the verified shield, focus rings. A transcript of two neutral greys with one bright
+colour appearing only where it carries information is the shape modern tools have converged on;
+a wall of accent-coloured bubbles is what dates an interface.
+
+### Tokens
+
+| Token | Dark (default) | Light |
+|---|---|---|
+| `--page` | `#0B0D10` | `#F7F8FA` |
+| `--surface` | `#111419` | `#FFFFFF` |
+| `--surface-hover` | `#161A21` | `#F0F2F5` |
+| `--surface-raised` | `#1A1E26` | `#FFFFFF` + shadow |
+| `--chat-bg` | `#0E1116` | `#FFFFFF` |
+| `--bubble-in` | `#171B22` | `#F1F3F6` |
+| `--bubble-out` | `#232A35` | `#E4E9F0` |
+| `--bubble-error` | `#2A1A1C` | `#FDECEC` |
+| `--text` | `#E8EBEF` | `#0F1319` |
+| `--text-secondary` | `#8B94A3` | `#5E6875` |
+| `--text-tertiary` | `#6B7484` | `#8A93A0` |
+| `--divider` | `#1E232B` | `#E6E9EE` |
+| `--accent` | `#22D3EE` | `#0891B2` |
+| `--accent-hover` | `#06B6D4` | `#0E7490` |
+| `--accent-ink` | `#062B33` | `#FFFFFF` |
+| `--tick` | `#22D3EE` | `#0891B2` |
+| `--unread` | `#FF6B57` | `#F0553D` |
+| `--unread-ink` | `#FFFFFF` | `#FFFFFF` |
+| `--danger` | `#FF6B6E` | `#D93A3D` |
+
+`--accent-ink` is dark on the dark theme's accent on purpose: white text on vivid cyan fails contrast,
+dark ink on it does not, and it is what makes a bright accent look deliberate rather than cheap.
+
+The unread badge stays **off-accent** — the one piece of reasoning worth carrying over from ADR-13.
+An unread count competing with the accent for attention makes both weaker.
+
+### Avatars — glanceability comes back
+
+Seven vivid gradients on the neutral ground. The monochromatic direction gave up hue as a way to
+identify a peer at a glance; a neutral base lets the avatars carry colour instead, so this recovers
+what that cost without making the whole interface loud.
+
+| Slot | From | To |
+|---|---|---|
+| Cyan | `#22D3EE` | `#0891B2` |
+| Violet | `#A78BFA` | `#7C3AED` |
+| Emerald | `#34D399` | `#059669` |
+| Amber | `#FBBF24` | `#D97706` |
+| Rose | `#FB7185` | `#E11D48` |
+| Indigo | `#818CF8` | `#4F46E5` |
+| Orange | `#FB923C` | `#EA580C` |
+
+### Typography
+
+**Geist** (open-source, genuinely current) bundled locally, with a system stack behind it. Not Inter
+and not Roboto — both are so ubiquitous now that they read as a default rather than a choice. No
+remote font loading, per §3.
+
+### Alternates, if the accent is wrong
+
+The base holds either way; only the accent changes.
+
+- **Violet** `#8B5CF6` / `#7C3AED` — softer, more product-like. The most common choice in current
+  tooling, which is both why it works and why it is less distinctive.
+- **Lime** `#BEF264` / `#65A30D` — sharpest and most distinctive, and the biggest risk: it reads
+  energetic rather than trustworthy, which may fight what a privacy tool is trying to say.
+
+Cyan is the recommendation: crisp on near-black, reads technical and calm, and is neither the blue
+this project started with nor the teal it just left.
