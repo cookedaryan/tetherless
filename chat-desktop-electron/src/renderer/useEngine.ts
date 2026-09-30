@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { friendlyError } from './format';
 import type {
   ConnectionState,
   EngineConversation,
@@ -40,9 +41,21 @@ export function useEngine() {
   const [peerTyping, setPeerTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<EngineMessage[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  /** The message to scroll to and flash after opening a conversation from a search hit. */
+  const [focusId, setFocusId] = useState<string | null>(null);
+
   // Read inside event handlers, which close over the value at subscribe time otherwise.
   const activeRef = useRef<string | null>(null);
   activeRef.current = activePeer;
+
+  // A search response is only used if no newer search has started since. Without this a slow
+  // search for "he" can land after the one for "hello" and put the wrong results on screen.
+  const searchSeq = useRef(0);
+  const searchTimer = useRef<number | undefined>(undefined);
+  const focusTimer = useRef<number | undefined>(undefined);
 
   const say = (e: unknown): void => setError((e as EngineError).message ?? String(e));
 
@@ -63,17 +76,32 @@ export function useEngine() {
   }, [refreshConversations]);
 
   const open = useCallback(
-    async (peerId: string) => {
+    async (peerId: string, jumpTo?: string) => {
       setActivePeer(peerId);
       setPeerTyping(false);
+      window.clearTimeout(focusTimer.current);
+      setFocusId(null);
       // Cleared before the history arrives. Otherwise the previous person's messages sit under the
       // new person's name for as long as the read takes, which in a chat app is worse than blank.
       setMessages([]);
       setFingerprints(null);
       try {
         await engine().invoke('setActivePeer', { peerId });
-        const { messages: rows } = await engine().invoke('history', { peerId, limit: 200 });
+        // A search hit can be older than the usual window. Load far enough back to reach it rather
+        // than opening the conversation and silently showing nothing.
+        const { messages: rows } = await engine().invoke('history', {
+          peerId,
+          limit: jumpTo ? 5000 : 200,
+        });
         setMessages(rows);
+        if (jumpTo) {
+          if (rows.some((m) => m.messageId === jumpTo)) {
+            setFocusId(jumpTo);
+            focusTimer.current = window.setTimeout(() => setFocusId(null), 2600);
+          } else {
+            setError('That message is older than the history this window can load.');
+          }
+        }
         setFingerprints(await engine().invoke('fingerprint', { peerId }));
         await engine().invoke('markRead', { peerId });
         await engine().invoke('readReceipt', { peerId }).catch(() => undefined);
@@ -83,6 +111,49 @@ export function useEngine() {
       }
     },
     [refreshConversations],
+  );
+
+  const runSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    window.clearTimeout(searchTimer.current);
+    const trimmed = query.trim();
+    if (!trimmed) {
+      searchSeq.current += 1; // Invalidates anything still in flight.
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const mine = ++searchSeq.current;
+    // Debounced: the engine decrypts row by row, so a search per keystroke would queue work behind
+    // the one the user actually wants.
+    searchTimer.current = window.setTimeout(() => {
+      engine()
+        .invoke('search', { query: trimmed, limit: 50 })
+        .then(({ messages: found }) => {
+          if (mine === searchSeq.current) {
+            setSearchResults(found);
+          }
+        })
+        .catch((e: unknown) => {
+          if (mine === searchSeq.current) {
+            say(e);
+          }
+        })
+        .finally(() => {
+          if (mine === searchSeq.current) {
+            setSearching(false);
+          }
+        });
+    }, 200);
+  }, []);
+
+  const openResult = useCallback(
+    (hit: EngineMessage) => {
+      runSearch(''); // Selecting a hit ends the search, as picking a conversation would.
+      void open(hit.peerId, hit.messageId);
+    },
+    [open, runSearch],
   );
 
   const startChat = useCallback(
@@ -151,7 +222,7 @@ export function useEngine() {
       engine().on('engineDown', () =>
         setError('The engine stopped. Nothing can be sent until it restarts.'),
       ),
-      engine().on('error', ({ message }) => setError(message)),
+      engine().on('error', ({ message }) => setError(friendlyError(message))),
       engine().on('typing', ({ peerId, typing }) => {
         if (peerId === activeRef.current) {
           setPeerTyping(typing);
@@ -186,6 +257,12 @@ export function useEngine() {
     peerTyping,
     error,
     setError,
+    searchQuery,
+    searchResults,
+    searching,
+    focusId,
+    runSearch,
+    openResult,
     unlock,
     connect,
     open,

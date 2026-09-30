@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EngineConversation, EngineMessage } from '../../shared/protocol';
 import type { Fingerprints } from '../useEngine';
+import { group, initials, slotFor } from '../format';
+import { motionReduced } from '../preferences';
 import { ShieldIcon } from './Sidebar';
 
 export function ChatPane(props: {
@@ -8,10 +10,11 @@ export function ChatPane(props: {
   messages: EngineMessage[];
   fingerprints: Fingerprints | null;
   peerTyping: boolean;
+  focusId: string | null;
   onSend: (text: string) => void;
   onSetVerified: (peerId: string, verified: boolean) => void;
 }): JSX.Element {
-  const { conversation, messages, fingerprints, peerTyping, onSend, onSetVerified } = props;
+  const { conversation, messages, fingerprints, peerTyping, focusId, onSend, onSetVerified } = props;
   const [showInfo, setShowInfo] = useState(false);
 
   if (!conversation) {
@@ -26,7 +29,9 @@ export function ChatPane(props: {
   return (
     <main className="chat">
       <header className="chat-head">
-        <span className="avatar small">{conversation.displayName.slice(0, 2).toUpperCase()}</span>
+        <span className="avatar small" data-slot={slotFor(conversation.peerId)}>
+          {initials(conversation.displayName)}
+        </span>
         <span className="chat-head-body">
           <span className="chat-title">
             {conversation.displayName}
@@ -42,7 +47,12 @@ export function ChatPane(props: {
       </header>
 
       <div className="chat-body">
-        <Transcript key={conversation.peerId} messages={messages} typing={peerTyping} />
+        <Transcript
+          key={conversation.peerId}
+          messages={messages}
+          typing={peerTyping}
+          focusId={focusId}
+        />
         {showInfo && (
           <ChatInfo
             conversation={conversation}
@@ -57,9 +67,14 @@ export function ChatPane(props: {
   );
 }
 
-function Transcript(props: { messages: EngineMessage[]; typing: boolean }): JSX.Element {
-  const { messages, typing } = props;
+function Transcript(props: {
+  messages: EngineMessage[];
+  typing: boolean;
+  focusId: string | null;
+}): JSX.Element {
+  const { messages, typing, focusId } = props;
   const foot = useRef<HTMLDivElement>(null);
+  const target = useRef<HTMLDivElement>(null);
 
   // How many messages were on screen after the previous render. Anything past that is new.
   // Zero means this is the initial load of a conversation, where nothing should animate: fading in
@@ -71,9 +86,20 @@ function Transcript(props: { messages: EngineMessage[]; typing: boolean }): JSX.
     const arrived = seen.current > 0 && messages.length > seen.current;
     // A message that just arrived glides into view; opening a conversation jumps straight to the
     // foot. Layout effect, so either happens before paint rather than as a visible correction.
-    foot.current?.scrollIntoView({ block: 'end', behavior: arrived ? 'smooth' : 'auto' });
+    const glide = arrived && !motionReduced();
+    foot.current?.scrollIntoView({ block: 'end', behavior: glide ? 'smooth' : 'auto' });
     seen.current = messages.length;
   }, [messages.length, typing]);
+
+  // Declared after the effect above so that, on the load that opens a conversation from a search
+  // hit, this one runs last and wins: the view lands on the message rather than the foot.
+  // Keyed on focusId alone, so the flash being cleared later does not re-run it and yank the view
+  // back down.
+  useLayoutEffect(() => {
+    if (focusId) {
+      target.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+  }, [focusId]);
 
   return (
     <div className="transcript">
@@ -84,7 +110,10 @@ function Transcript(props: { messages: EngineMessage[]; typing: boolean }): JSX.
         return (
           <div key={m.messageId ?? i}>
             {newDay && <div className="day">{dayLabel(m.timestamp)}</div>}
-            <div className={`bubble-row ${m.direction}${fresh ? ' fresh' : ''}`}>
+            <div
+              ref={m.messageId === focusId ? target : undefined}
+              className={`bubble-row ${m.direction}${fresh ? ' fresh' : ''}${m.messageId === focusId ? ' hit' : ''}`}
+            >
               <div className={`bubble ${m.direction}${m.error ? ' failed' : ''}`}>
                 <span className="bubble-text">{m.text}</span>
                 <span className="meta">
@@ -109,6 +138,11 @@ function Transcript(props: { messages: EngineMessage[]; typing: boolean }): JSX.
 }
 
 function Ticks({ status }: { status: EngineMessage['status'] }): JSX.Element | null {
+  // Queued on this machine, not yet handed to the relay. Drawn as a clock, never as a tick: a tick
+  // says "sent", and this message has not left.
+  if (status === 'PENDING') {
+    return <span className="tick pending" title="Waiting to send">◷</span>;
+  }
   if (status === 'FAILED') {
     return <span className="tick failed" title="Not delivered">!</span>;
   }
@@ -193,15 +227,6 @@ function Composer({ onSend }: { onSend: (text: string) => void }): JSX.Element {
       </button>
     </div>
   );
-}
-
-/** Five-character groups, which is how two people read a fingerprint to each other. */
-function group(fingerprint: string | null | undefined): string {
-  if (!fingerprint) {
-    return '';
-  }
-  const plain = fingerprint.replace(/[^0-9a-fA-F]/g, '');
-  return (plain.match(/.{1,5}/g) ?? []).join('  ');
 }
 
 function clock(ts: number): string {

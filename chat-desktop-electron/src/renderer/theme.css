@@ -29,6 +29,10 @@
   --unread-ink: #ffffff;
   --danger: #ff6b6e;
 
+  /* Tells the browser to draw scrollbars and native controls for this theme. Without it a dark
+     window gets a bright white scrollbar. */
+  color-scheme: dark;
+
   --radius: 10px;
   --radius-lg: 14px;
   --font: 'Geist', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -36,6 +40,7 @@
 }
 
 :root[data-theme='light'] {
+  color-scheme: light;
   --page: #f7f8fa;
   --surface: #ffffff;
   --surface-hover: #f0f2f5;

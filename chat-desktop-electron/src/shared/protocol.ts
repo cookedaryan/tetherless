@@ -13,7 +13,8 @@ export interface EngineMessage {
   text: string;
   timestamp: number;
   direction: 'in' | 'out';
-  status: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null;
+  /** PENDING: queued on this machine, not yet handed to the relay. Rendered as a clock. */
+  status: 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null;
   replyToId?: string | null;
   replyToPreview?: string | null;
   error?: boolean;

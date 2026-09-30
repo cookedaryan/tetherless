@@ -99,8 +99,14 @@ About five minutes. It builds an argument rather than listing features.
    the project from a chat app that merely uses TLS.
 5. **Show the relay's terminal.** It logs routing and redacted ids, and no message content. The
    central claim is visible here rather than asserted.
-6. **Stop the relay**, send a message, show it fail, restart the relay and watch the client
-   reconnect.
+6. **Search.** Press Ctrl+F, type a word from an earlier message. The match is highlighted, the
+   result names the conversation, and clicking it jumps to that message and flashes it. Point out
+   that the messages are encrypted on disk and being searched anyway, because the key is in memory
+   while the app is unlocked.
+7. **Settings.** Open the gear. Switch theme to light and back, show that it applies instantly and
+   survives a restart, and show your own peer id and safety number.
+8. **Stop the relay**, send a message, watch the banner and the clock, restart the relay and watch
+   the client reconnect.
 
 ---
 
@@ -161,7 +167,19 @@ errors and will cost you ten minutes convincing yourself nothing is broken.
 
 ## Known limits of this build
 
-Stated so nobody discovers them on stage. This is an early Electron client; it has **not** got the
-Swing client's search, settings panel, reply quoting, pin/mute/archive, notifications, or a packaged
-installer. Run from source as above. The cryptography and relay are the same code as the Swing
-client and are the more heavily tested part.
+Stated so nobody discovers them on stage. This is an early Electron client. It has search and a
+settings panel, but **not** the Swing client's reply quoting, pin/mute/archive, notifications, or a
+packaged installer. Run from source as above. The cryptography and relay are the same code as the
+Swing client and are the more heavily tested part.
+
+Things a careful audience member may notice:
+
+- **A message to someone who is offline shows a clock, not a tick, and a banner says they are
+  offline.** The clock means it is queued on your machine. Whether it later reaches them depends on
+  a session forming, so do not tell the audience it will definitely be delivered.
+- **Search is not instant on a very large history.** The engine decrypts messages one at a time
+  while searching, and it handles one command at a time, so a search over a huge history can delay
+  a send made in the same moment. Irrelevant at demo scale, real at scale.
+- **There is no update check.** The Swing client had one; this one contacts nothing but the relay,
+  which is why settings has no update switch.
+- **The relay address is not editable in the app.** Settings shows it and says how to change it.

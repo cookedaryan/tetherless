@@ -88,6 +88,35 @@ const ok = (m) => console.log('  PASS ' + m);
   const list = await bob.invoke('listConversations', {});
   ok('Bob conversation list: ' + list.conversations.length + ' conversation, unread=' + list.conversations[0].unread);
 
+  // ---- search: the engine command behind the search box ----
+  const hit = await alice.invoke('search', { query: 'hello', limit: 50 });
+  if (hit.messages.length !== 1 || hit.messages[0].peerId !== b.clientId)
+    throw new Error('search for "hello" should find exactly the one message, got ' + JSON.stringify(hit.messages));
+  ok('search finds the message and reports which conversation it belongs to');
+
+  const upper = await alice.invoke('search', { query: 'HELLO', limit: 50 });
+  if (upper.messages.length !== 1) throw new Error('search should ignore case');
+  ok('search ignores case');
+
+  const emoji = await alice.invoke('search', { query: '\u{1F512}', limit: 50 });
+  if (emoji.messages.length !== 1) throw new Error('search for the emoji failed');
+  ok('search matches an emoji stored encrypted at rest');
+
+  const none = await alice.invoke('search', { query: 'zzz-not-present', limit: 50 });
+  if (none.messages.length !== 0) throw new Error('a query with no match must return nothing');
+  ok('a query with no match returns nothing');
+
+  // If the repository matched with SQL LIKE, "%" would be a wildcard and return every message.
+  const wildcard = await alice.invoke('search', { query: '%', limit: 50 });
+  if (wildcard.messages.length !== 0) throw new Error('"%" acted as a wildcard: ' + wildcard.messages.length);
+  ok('"%" is matched literally, not as a wildcard');
+
+  // ---- status: what the settings panel displays ----
+  const st = await alice.invoke('status', {});
+  if (st.displayName !== 'Alice' || st.clientId !== a.clientId || !st.fingerprint || !st.relay)
+    throw new Error('status is missing what the settings panel shows: ' + JSON.stringify(st));
+  ok('status carries name, peer id, safety number and relay for the settings panel');
+
   const fa = await alice.invoke('fingerprint', { peerId: b.clientId });
   const fb = await bob.invoke('fingerprint', { peerId: a.clientId });
   const strip = (s) => String(s).replace(/[^0-9a-f]/gi, '').toLowerCase();

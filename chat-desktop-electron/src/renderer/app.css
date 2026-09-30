@@ -42,12 +42,21 @@ button.small { padding: 6px 12px; font-size: 12.5px; }
 
 /* ---------------------------------------------------------------- sidebar */
 
-.sidebar {
+/* The settings panel is positioned over the sidebar, so both live in this frame. */
+.side {
+  position: relative;
   flex: 0 0 320px;
+  display: flex;
+  overflow: hidden;
+  border-right: 1px solid var(--divider);
+  background: var(--surface);
+}
+.sidebar {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border-right: 1px solid var(--divider);
 }
 .sidebar-head {
   flex: 0 0 56px;
@@ -280,3 +289,189 @@ button.small { padding: 6px 12px; font-size: 12.5px; }
 .signin-form p { margin: 0; line-height: 1.5; }
 .signin-form label { display: flex; flex-direction: column; gap: 4px; }
 .field-label { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+
+/* ----------------------------------------------------------------- search */
+
+button.icon {
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  font-weight: 400;
+  line-height: 1;
+}
+button.icon:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 14px 8px;
+  padding: 0 6px 0 12px;
+  border-radius: 10px;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+.search input {
+  flex: 1;
+  border: none;
+  padding: 10px 0;
+  background: transparent;
+}
+.search input:focus { border: none; }
+.search:focus-within { box-shadow: 0 0 0 1.5px var(--accent); }
+
+.results-count { padding: 4px 10px 6px; margin: 0; }
+.row.result { height: auto; min-height: 58px; padding: 8px 10px; align-items: flex-start; }
+.row.result .row-preview { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.when { margin-left: auto; font-weight: 400; }
+
+mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* The message a search hit lands on: a brief wash, then it settles. */
+.bubble-row.hit .bubble { animation: hit 2.4s ease-out; }
+@keyframes hit {
+  0%, 35% { box-shadow: 0 0 0 2px var(--accent); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}
+
+/* --------------------------------------------------------------- settings */
+
+.settings {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  transform: translateX(-100%);
+  /* Hidden after the slide finishes, so a closed panel is not reachable by Tab. */
+  visibility: hidden;
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s linear 220ms;
+}
+.settings.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s;
+}
+.settings-head {
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--divider);
+}
+.settings-body { flex: 1; overflow-y: auto; padding: 6px 0 24px; user-select: text; }
+.settings h4 {
+  margin: 18px 20px 6px;
+  font-size: 11.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 20px;
+}
+.setting.stack { flex-direction: column; align-items: flex-start; gap: 6px; }
+.setting p { margin: 0; }
+.setting-text { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.setting small { line-height: 1.45; }
+.setting .label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.settings .fp { width: 100%; }
+.note { margin: 0 20px; line-height: 1.5; }
+
+.switch {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--divider);
+  display: flex;
+  align-items: center;
+  transition: background 160ms ease;
+}
+.switch span {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform 160ms ease, background 160ms ease;
+}
+.switch.on { background: var(--accent); }
+.switch.on:hover:not(:disabled) { background: var(--accent-hover); }
+.switch.on span { transform: translateX(18px); background: var(--accent-ink); }
+.switch:not(.on):hover:not(:disabled) { background: var(--divider); }
+
+.segmented {
+  display: flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-hover);
+}
+.segmented button {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.segmented button:hover:not(:disabled) { background: transparent; color: var(--text); }
+.segmented button.on, .segmented button.on:hover:not(:disabled) {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+:root[data-theme='light'] .segmented button.on { box-shadow: 0 1px 3px rgba(15, 19, 25, 0.12); }
+
+.pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+.pill.connected { color: var(--accent); }
+.pill.connecting, .pill.reconnecting { color: var(--unread); }
+
+/* -------------------------------------------------------------- refinements */
+
+/* One focus ring for everything, in the accent. The browser default is a gold outline that belongs
+   to no palette, and it showed on the settings back button. Keyboard focus only, so clicking a
+   button does not leave a ring behind. */
+button:focus-visible,
+.search input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.search input:focus-visible { outline: none; }
+
+.tick.pending { color: var(--text-tertiary); letter-spacing: 0; font-size: 13px; }
+
+/* On the light theme --surface-raised is white, the same as the panel, so the box vanished. */
+:root[data-theme='light'] .fp { background: var(--surface-hover); }
+
+/* ---------------------------------------------------------- reduced motion */
+
+/* Set from Settings. The media query below covers people who set it at the OS level instead. */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble-row.hit .bubble, .settings, .settings.open, .switch, .switch span {
+    animation: none;
+    transition: none;
+  }
+}

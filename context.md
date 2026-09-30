@@ -118,9 +118,34 @@ launches it, the engine initialises its database, and every line of its logging 
 leaving the frame stream on stdout clean. That last property is what the whole channel design rests
 on.
 
-**Not yet proven:** no message has travelled between two parties through the relay *via Electron*.
-The plumbing works; the conversation has not been demonstrated. Until it has, "it works" means the
-plumbing works.
+**Since then (phase 3 and part of 4):** the chat UI, search and a settings panel are built. Two
+engines against a live relay complete the signed key exchange and exchange messages intact —
+quotes, newlines and emoji included — with delivery acks, persisted history, encrypted-at-rest
+search and matching safety numbers on both sides. That is `npm run e2e` in `chat-desktop-electron`,
+and it needs a relay on `localhost:8080`. The real window has also been driven over its debugging
+port and screenshotted in both themes.
+
+Search covers every conversation, with the match highlighted; selecting a hit opens that
+conversation and scrolls to and flashes the message, loading deeper history if it is older than the
+usual 200. Settings has theme, reduce-motion, identity (with the peer id and safety number), the
+relay address and version. It deliberately has no update switch, because this client has no update
+check to switch.
+
+**Still missing compared with the Swing client:** reply quoting, pin/mute/archive, notifications,
+and a packaged installer.
+
+**Known gaps worth fixing:**
+
+- The relay's `RECIPIENT_OFFLINE` error carries no message id, so it cannot be tied to one bubble.
+  The UI shows a banner and the message keeps its clock or tick; whether it is later delivered
+  depends on a session forming. A protocol change would let the client mark the right message.
+- The engine handles one command at a time, so a search over a very large history can delay a send.
+  Fine at demo scale; the fix is to run searches off the command loop.
+- Nothing automated checks the renderer's sandbox or CSP settings.
+
+**Verification in this stack:** `npm test` runs 14 unit tests on the pure helpers, and mutating the
+code confirmed they fail when the logic is broken; `npm run typecheck` runs strict TypeScript over
+both projects; `npm run e2e` is the two-party round trip.
 
 **Design decisions worth knowing, each forced by something that actually broke:**
 
@@ -132,7 +157,7 @@ plumbing works.
 - A failed spawn surfaces as an `engineDown` event rather than dying as an unhandled rejection
   behind a blank window.
 
-### What comes next (phases 3–6)
+### What comes next (phase 3 is done and phase 4 is partly done; see above for what remains)
 
 | Phase | Work | Done when |
 |---|---|---|

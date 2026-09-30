@@ -1,11 +1,23 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useEngine } from './useEngine';
 import { Sidebar } from './components/Sidebar';
 import { ChatPane } from './components/ChatPane';
+import { SettingsPanel } from './components/SettingsPanel';
+import { applyPreferences, loadPreferences, savePreferences } from './preferences';
+import type { Preferences } from './preferences';
 import type { EngineError } from '../shared/protocol';
 
 export function App(): JSX.Element {
   const e = useEngine();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [preferences, setPreferences] = useState<Preferences>(loadPreferences);
+
+  const changePreferences = useCallback((next: Preferences) => {
+    setPreferences(next);
+    applyPreferences(next);
+    savePreferences(next);
+  }, []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   if (!e.status) {
     return <Centred>Starting…</Centred>;
@@ -51,18 +63,35 @@ export function App(): JSX.Element {
       )}
 
       <div className="body">
-        <Sidebar
-          conversations={e.conversations}
-          activePeer={e.activePeer}
-          selfId={e.status.clientId}
-          onOpen={(id) => void e.open(id)}
-          onStartChat={(id) => void e.startChat(id)}
-        />
+        <div className="side">
+          <Sidebar
+            conversations={e.conversations}
+            activePeer={e.activePeer}
+            selfId={e.status.clientId}
+            searchQuery={e.searchQuery}
+            searchResults={e.searchResults}
+            searching={e.searching}
+            onOpen={(id) => void e.open(id)}
+            onStartChat={(id) => void e.startChat(id)}
+            onSearch={e.runSearch}
+            onOpenResult={e.openResult}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+          <SettingsPanel
+            open={settingsOpen}
+            status={e.status}
+            connection={e.connection}
+            preferences={preferences}
+            onChange={changePreferences}
+            onClose={closeSettings}
+          />
+        </div>
         <ChatPane
           conversation={active}
           messages={e.messages}
           fingerprints={e.fingerprints}
           peerTyping={e.peerTyping}
+          focusId={e.focusId}
           onSend={(text) => void e.send(text)}
           onSetVerified={(id, v) => void e.setVerified(id, v)}
         />
