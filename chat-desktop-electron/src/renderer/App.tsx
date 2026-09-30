@@ -1,16 +1,52 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEngine } from './useEngine';
+import { notificationContent } from './format';
 import { Sidebar } from './components/Sidebar';
 import { ChatPane } from './components/ChatPane';
 import { SettingsPanel } from './components/SettingsPanel';
 import { applyPreferences, loadPreferences, savePreferences } from './preferences';
 import type { Preferences } from './preferences';
-import type { EngineError } from '../shared/protocol';
+import type { EngineError, EngineMessage } from '../shared/protocol';
 
 export function App(): JSX.Element {
-  const e = useEngine();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(loadPreferences);
+
+  // Read at the moment a message arrives, not captured when the subscription was made.
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  const openRef = useRef<(peerId: string) => Promise<void>>(() => Promise.resolve());
+
+  const e = useEngine(
+    useCallback((message: EngineMessage) => {
+      const p = preferencesRef.current;
+      if (!p.notifications) {
+        return;
+      }
+      // Silent while the window is in front: you can see it arrive, and the unread count covers
+      // the other conversations. A notification is for when you are not looking.
+      if (document.hasFocus()) {
+        return;
+      }
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+        return;
+      }
+      const { title, body } = notificationContent(message, p.notificationPreview);
+      // Tagged by peer, so a burst from one person replaces its notification instead of stacking.
+      const shown = new Notification(title, { body, tag: message.peerId });
+      shown.onclick = () => {
+        window.focus();
+        void openRef.current(message.peerId);
+      };
+    }, []),
+  );
+  openRef.current = e.open;
+
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      void Notification.requestPermission();
+    }
+  }, []);
 
   const changePreferences = useCallback((next: Preferences) => {
     setPreferences(next);
@@ -92,6 +128,11 @@ export function App(): JSX.Element {
           fingerprints={e.fingerprints}
           peerTyping={e.peerTyping}
           focusId={e.focusId}
+          selfId={e.status.clientId}
+          replyTo={e.replyTo}
+          onReply={e.beginReply}
+          onCancelReply={e.cancelReply}
+          onJumpTo={e.jumpToMessage}
           onSend={(text) => void e.send(text)}
           onSetVerified={(id, v) => void e.setVerified(id, v)}
         />

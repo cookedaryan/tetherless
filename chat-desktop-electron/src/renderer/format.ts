@@ -40,6 +40,37 @@ export function friendlyError(reason: string): string {
   return reason;
 }
 
+/**
+ * What an operating-system notification says.
+ *
+ * With `showPreview` off the message text is never part of the result, not merely hidden by the
+ * caller. A notification can appear on a lock screen or be mirrored to another device by the OS,
+ * so showing content has to be an explicit choice, and the default has to be to say nothing.
+ */
+export function notificationContent(
+  message: { displayName?: string | undefined; text: string },
+  showPreview: boolean,
+): { title: string; body: string } {
+  const title = message.displayName?.trim() || 'Tetherless';
+  if (!showPreview) {
+    return { title, body: 'New message' };
+  }
+  const flat = message.text.replace(/\s+/g, ' ').trim();
+  return { title, body: flat.length > 120 ? flat.slice(0, 120) + '…' : flat };
+}
+
+/** Who a quoted message is attributed to: "You" for your own, otherwise the other person. */
+export function quoteAuthor(
+  replyToSender: string | null | undefined,
+  selfId: string | undefined,
+  peerName: string,
+): string {
+  if (replyToSender && selfId && replyToSender.toLowerCase() === selfId.toLowerCase()) {
+    return 'You';
+  }
+  return peerName;
+}
+
 /** Five-character groups, which is how two people read a fingerprint to each other. */
 export function group(fingerprint: string | null | undefined): string {
   if (!fingerprint) {

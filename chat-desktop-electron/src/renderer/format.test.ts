@@ -1,6 +1,47 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { excerpt, friendlyError, group, initials, slotFor, splitOnMatch } from './format.ts';
+import {
+  excerpt,
+  friendlyError,
+  group,
+  initials,
+  notificationContent,
+  quoteAuthor,
+  slotFor,
+  splitOnMatch,
+} from './format.ts';
+
+test('with previews off, the message text never reaches the notification', () => {
+  // The whole point of the setting: a notification can appear on a lock screen or be mirrored to
+  // another device by the OS, so what it says has to be a choice, and the default must be silence.
+  const n = notificationContent({ displayName: 'Bob', text: 'the launch code is 0000' }, false);
+  assert.equal(n.title, 'Bob');
+  assert.equal(n.body, 'New message');
+  assert.ok(!JSON.stringify(n).includes('launch'), 'text leaked into a preview-off notification');
+});
+
+test('with previews on, the text is shown flattened and cut to a sensible length', () => {
+  const short = notificationContent({ displayName: 'Bob', text: 'see\nyou  soon' }, true);
+  assert.equal(short.body, 'see you soon');
+
+  const long = notificationContent({ displayName: 'Bob', text: 'x'.repeat(500) }, true);
+  assert.ok(long.body.length <= 121, 'body should be cut, got ' + long.body.length);
+  assert.ok(long.body.endsWith('…'));
+});
+
+test('a peer with no name still produces a usable notification', () => {
+  assert.equal(notificationContent({ displayName: '', text: 'hi' }, false).title, 'Tetherless');
+  assert.equal(notificationContent({ displayName: undefined, text: 'hi' }, false).title, 'Tetherless');
+});
+
+test('a quote is attributed to you when you wrote it, otherwise to the other person', () => {
+  assert.equal(quoteAuthor('me-id', 'me-id', 'Bob'), 'You');
+  assert.equal(quoteAuthor('bob-id', 'me-id', 'Bob'), 'Bob');
+  // Ids compare case-insensitively: they are hex, and one side may have lower-cased it.
+  assert.equal(quoteAuthor('ME-ID', 'me-id', 'Bob'), 'You');
+  assert.equal(quoteAuthor(null, 'me-id', 'Bob'), 'Bob');
+  assert.equal(quoteAuthor('bob-id', undefined, 'Bob'), 'Bob');
+});
 
 test('initials come from the first two words, and never throw on an odd name', () => {
   assert.equal(initials('Aria Chen'), 'AC');

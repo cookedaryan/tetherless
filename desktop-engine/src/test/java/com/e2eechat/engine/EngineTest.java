@@ -140,6 +140,27 @@ public class EngineTest {
         assertTrue(((List<?>) history.get("messages")).isEmpty());
     }
 
+    /**
+     * A reply to a message the engine cannot find is refused, not sent without its quote.
+     *
+     * <p>It used to look in the last 200 messages and, finding nothing, send the text as a plain
+     * message. The sender believed they had replied to something; the recipient saw an unexplained
+     * message with no context. Failing loudly is the only outcome that tells the sender the truth.
+     */
+    @Test
+    public void aReplyToAnUnknownMessageIsRefusedRatherThanSentBare() throws Exception {
+        Engine engine = newEngine();
+        engine.handle("unlock",
+                payload("passphrase", "correct horse battery staple", "displayName", "Aria Chen"));
+        try {
+            engine.handle("send", payload("peerId", "someone", "text", "yes",
+                    "replyToId", "no-such-message"));
+            fail("a reply to a message that does not exist must be refused");
+        } catch (Engine.CommandException e) {
+            assertEquals("reply_target_missing", e.code());
+        }
+    }
+
     @Test
     public void anUnknownCommandIsNamedInTheError() throws Exception {
         try {

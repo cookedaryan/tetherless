@@ -31,12 +31,24 @@ export interface Fingerprints {
  * database. Only the open transcript is appended to optimistically, because that is the one place
  * where waiting for a round trip would be visible.
  */
-export function useEngine() {
+export function useEngine(
+  /** Called for every incoming message. What to do about it is the caller's policy. */
+  onIncoming?: (message: EngineMessage) => void,
+) {
   const [status, setStatus] = useState<EngineStatus | null>(null);
+  /** The message being replied to, shown above the composer until sent or cancelled. */
+  const [replyTo, setReplyTo] = useState<EngineMessage | null>(null);
+  // Held in a ref so the event subscription, made once, always calls the current callback.
+  const incomingRef = useRef(onIncoming);
+  incomingRef.current = onIncoming;
+  const replyRef = useRef<EngineMessage | null>(null);
+  replyRef.current = replyTo;
+  const messagesRef = useRef<EngineMessage[]>([]);
   const [connection, setConnection] = useState<ConnectionState>('DISCONNECTED');
   const [conversations, setConversations] = useState<EngineConversation[]>([]);
   const [activePeer, setActivePeer] = useState<string | null>(null);
   const [messages, setMessages] = useState<EngineMessage[]>([]);
+  messagesRef.current = messages;
   const [fingerprints, setFingerprints] = useState<Fingerprints | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +93,9 @@ export function useEngine() {
       setPeerTyping(false);
       window.clearTimeout(focusTimer.current);
       setFocusId(null);
+      // A reply drafted in one conversation must not follow you into another and quote a message
+      // to someone who never wrote it.
+      setReplyTo(null);
       // Cleared before the history arrives. Otherwise the previous person's messages sit under the
       // new person's name for as long as the read takes, which in a chat app is worse than blank.
       setMessages([]);
@@ -148,6 +163,25 @@ export function useEngine() {
     }, 200);
   }, []);
 
+  /**
+   * Scrolls to a message in the conversation already open - what clicking a quote does. If it is
+   * not among the loaded messages it says so; a click that does nothing is a dead end.
+   */
+  const jumpToMessage = useCallback((messageId: string) => {
+    if (!messagesRef.current.some((m) => m.messageId === messageId)) {
+      setError('That message is older than the history this window has loaded.');
+      return;
+    }
+    window.clearTimeout(focusTimer.current);
+    // Cleared first, then set on the next frame: setting the id it already has would do nothing,
+    // so a second click on the same quote while it was still highlighted would not scroll.
+    setFocusId(null);
+    window.requestAnimationFrame(() => {
+      setFocusId(messageId);
+      focusTimer.current = window.setTimeout(() => setFocusId(null), 2600);
+    });
+  }, []);
+
   const openResult = useCallback(
     (hit: EngineMessage) => {
       runSearch(''); // Selecting a hit ends the search, as picking a conversation would.
@@ -174,15 +208,26 @@ export function useEngine() {
       if (!peerId || !text.trim()) {
         return;
       }
+      const quoting = replyRef.current;
       try {
-        const { sent } = await engine().invoke('send', { peerId, text: text.trim() });
+        const { sent } = await engine().invoke('send', {
+          peerId,
+          text: text.trim(),
+          ...(quoting ? { replyToId: quoting.messageId } : {}),
+        });
         if (sent) {
           setMessages((prev) => [...prev, sent]);
+          setReplyTo(null);
         } else {
           setError('That message could not be sent.');
         }
         await refreshConversations();
       } catch (e) {
+        // A quote that can no longer be found is dropped from the composer, so the next attempt is
+        // not refused for the same reason. Any other failure keeps the draft reply.
+        if ((e as EngineError).code === 'reply_target_missing') {
+          setReplyTo(null);
+        }
         say(e);
       }
     },
@@ -234,6 +279,7 @@ export function useEngine() {
         );
       }),
       engine().on('message', (incoming) => {
+        incomingRef.current?.(incoming);
         if (incoming.peerId === activeRef.current) {
           setPeerTyping(false);
           setMessages((prev) => [...prev, incoming]);
@@ -261,6 +307,10 @@ export function useEngine() {
     searchResults,
     searching,
     focusId,
+    replyTo,
+    beginReply: setReplyTo,
+    cancelReply: () => setReplyTo(null),
+    jumpToMessage,
     runSearch,
     openResult,
     unlock,

@@ -16,8 +16,12 @@ export interface EngineMessage {
   /** PENDING: queued on this machine, not yet handed to the relay. Rendered as a clock. */
   status: 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null;
   replyToId?: string | null;
+  /** The peer id of whoever wrote the quoted message, which may be you. */
+  replyToSender?: string | null;
   replyToPreview?: string | null;
   error?: boolean;
+  /** Only on incoming `message` events: the sender's label, for notifications. */
+  displayName?: string;
 }
 
 export interface EngineConversation {

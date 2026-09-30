@@ -354,16 +354,18 @@ public class Engine implements MessageListener {
         return result("messages", rows);
     }
 
-    private Map<String, Object> send(String peerId, String text, String replyToId) {
+    private Map<String, Object> send(String peerId, String text, String replyToId)
+            throws CommandException {
         client.setCurrentPeerId(peerId);
         ChatMessage replyTo = null;
         if (replyToId != null) {
-            for (ChatMessage candidate : client.getMessageRepository()
-                    .getMessages(client.getClientId(), peerId, 200)) {
-                if (replyToId.equals(candidate.getMessageId())) {
-                    replyTo = candidate;
-                    break;
-                }
+            replyTo = findMessage(peerId, replyToId, REPLY_LOOKUP_LIMIT);
+            if (replyTo == null) {
+                // Refused rather than sent bare. Dropping the quote silently means the sender
+                // believes they replied to something while the recipient sees an unexplained
+                // message with no context.
+                throw new CommandException("reply_target_missing",
+                        "The message being replied to could not be found");
             }
         }
         ChatMessage sent = client.sendMessage(text, replyTo);
@@ -399,13 +401,22 @@ public class Engine implements MessageListener {
     public void onMessageReceived(Message msg) {
         switch (msg.getType()) {
             case TEXT_MESSAGE:
-                Map<String, Object> incoming = new LinkedHashMap<String, Object>();
+                // The broadcast frame carries only the text; the reply fields were saved to the
+                // repository just before it, so they are read back from that row. Without this an
+                // incoming reply arrived live with its quote missing, and only appeared after the
+                // conversation was reopened.
+                ChatMessage stored = findMessage(msg.getSenderId(), msg.getMessageId(), 50);
+                Map<String, Object> incoming = stored != null
+                        ? describe(stored, client.getClientId())
+                        : new LinkedHashMap<String, Object>();
                 incoming.put("messageId", msg.getMessageId());
                 incoming.put("peerId", msg.getSenderId());
                 incoming.put("text", text(msg));
                 incoming.put("timestamp", Long.valueOf(msg.getTimestamp()));
                 incoming.put("direction", "in");
                 incoming.put("status", ChatMessage.Status.DELIVERED.name());
+                // For notifications, which name the sender rather than showing a bare id.
+                incoming.put("displayName", client.displayNameFor(msg.getSenderId()));
                 events.emit("message", incoming);
                 return;
 
@@ -452,6 +463,24 @@ public class Engine implements MessageListener {
 
     // -------------------------------------------------------------------- helpers
 
+    /**
+     * How far back a reply may reach. Generous on purpose: the window loads up to 5000 messages
+     * when it jumps to an old search hit, and a reply target the engine cannot see would otherwise
+     * be refused for being merely old.
+     */
+    private static final int REPLY_LOOKUP_LIMIT = 5000;
+
+    /** One message from a conversation by id, or null. Newest-first scan, so recent hits are cheap. */
+    private ChatMessage findMessage(String peerId, String messageId, int limit) {
+        for (ChatMessage candidate : client.getMessageRepository()
+                .getMessages(client.getClientId(), peerId, limit)) {
+            if (messageId.equals(candidate.getMessageId())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
     private static Map<String, Object> describe(ChatMessage m, String self) {
         Map<String, Object> row = new LinkedHashMap<String, Object>();
         row.put("messageId", m.getMessageId());
@@ -461,6 +490,7 @@ public class Engine implements MessageListener {
         row.put("direction", m.getSender().equals(self) ? "out" : "in");
         row.put("status", m.getStatus() == null ? null : m.getStatus().name());
         row.put("replyToId", m.getReplyToId());
+        row.put("replyToSender", m.getReplyToSender());
         row.put("replyToPreview", m.getReplyToPreview());
         row.put("error", Boolean.valueOf(m.isError()));
         return row;

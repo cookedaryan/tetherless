@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EngineConversation, EngineMessage } from '../../shared/protocol';
 import type { Fingerprints } from '../useEngine';
-import { group, initials, slotFor } from '../format';
+import { group, initials, quoteAuthor, slotFor } from '../format';
 import { motionReduced } from '../preferences';
 import { ShieldIcon } from './Sidebar';
 
@@ -11,10 +11,18 @@ export function ChatPane(props: {
   fingerprints: Fingerprints | null;
   peerTyping: boolean;
   focusId: string | null;
+  selfId: string | undefined;
+  replyTo: EngineMessage | null;
   onSend: (text: string) => void;
+  onReply: (message: EngineMessage) => void;
+  onCancelReply: () => void;
+  onJumpTo: (messageId: string) => void;
   onSetVerified: (peerId: string, verified: boolean) => void;
 }): JSX.Element {
-  const { conversation, messages, fingerprints, peerTyping, focusId, onSend, onSetVerified } = props;
+  const {
+    conversation, messages, fingerprints, peerTyping, focusId, selfId, replyTo,
+    onSend, onReply, onCancelReply, onJumpTo, onSetVerified,
+  } = props;
   const [showInfo, setShowInfo] = useState(false);
 
   if (!conversation) {
@@ -52,6 +60,10 @@ export function ChatPane(props: {
           messages={messages}
           typing={peerTyping}
           focusId={focusId}
+          peerName={conversation.displayName}
+          selfId={selfId}
+          onReply={onReply}
+          onJumpTo={onJumpTo}
         />
         {showInfo && (
           <ChatInfo
@@ -62,7 +74,14 @@ export function ChatPane(props: {
         )}
       </div>
 
-      <Composer onSend={onSend} />
+      <Composer
+        // Keyed by conversation, so a half-typed message does not follow you to someone else.
+        key={conversation.peerId}
+        onSend={onSend}
+        replyTo={replyTo}
+        replyAuthor={replyTo ? quoteAuthor(replyTo.direction === 'out' ? selfId : replyTo.peerId, selfId, conversation.displayName) : ''}
+        onCancelReply={onCancelReply}
+      />
     </main>
   );
 }
@@ -71,8 +90,12 @@ function Transcript(props: {
   messages: EngineMessage[];
   typing: boolean;
   focusId: string | null;
+  peerName: string;
+  selfId: string | undefined;
+  onReply: (message: EngineMessage) => void;
+  onJumpTo: (messageId: string) => void;
 }): JSX.Element {
-  const { messages, typing, focusId } = props;
+  const { messages, typing, focusId, peerName, selfId, onReply, onJumpTo } = props;
   const foot = useRef<HTMLDivElement>(null);
   const target = useRef<HTMLDivElement>(null);
 
@@ -114,13 +137,36 @@ function Transcript(props: {
               ref={m.messageId === focusId ? target : undefined}
               className={`bubble-row ${m.direction}${fresh ? ' fresh' : ''}${m.messageId === focusId ? ' hit' : ''}`}
             >
+              {/* A real button, shown on hover or keyboard focus, so reply is reachable without a mouse. */}
+              {m.direction === 'out' && (
+                <button className="reply-btn" onClick={() => onReply(m)} aria-label="Reply to this message" title="Reply">
+                  ↩
+                </button>
+              )}
               <div className={`bubble ${m.direction}${m.error ? ' failed' : ''}`}>
+                {m.replyToId && (
+                  <button
+                    className="quote"
+                    onClick={() => onJumpTo(m.replyToId as string)}
+                    title="Go to the original message"
+                  >
+                    <span className="quote-author">
+                      {quoteAuthor(m.replyToSender, selfId, peerName)}
+                    </span>
+                    <span className="quote-text">{m.replyToPreview}</span>
+                  </button>
+                )}
                 <span className="bubble-text">{m.text}</span>
                 <span className="meta">
                   <span className="time">{clock(m.timestamp)}</span>
                   {m.direction === 'out' && <Ticks status={m.status} />}
                 </span>
               </div>
+              {m.direction === 'in' && (
+                <button className="reply-btn" onClick={() => onReply(m)} aria-label="Reply to this message" title="Reply">
+                  ↩
+                </button>
+              )}
             </div>
           </div>
         );
@@ -195,11 +241,23 @@ function ChatInfo(props: {
   );
 }
 
-function Composer({ onSend }: { onSend: (text: string) => void }): JSX.Element {
+function Composer(props: {
+  onSend: (text: string) => void;
+  replyTo: EngineMessage | null;
+  replyAuthor: string;
+  onCancelReply: () => void;
+}): JSX.Element {
+  const { onSend, replyTo, replyAuthor, onCancelReply } = props;
   const [text, setText] = useState('');
   const field = useRef<HTMLInputElement>(null);
 
   useEffect(() => field.current?.focus(), []);
+  // Starting a reply puts the cursor in the box, so the next thing typed is the reply.
+  useEffect(() => {
+    if (replyTo) {
+      field.current?.focus();
+    }
+  }, [replyTo]);
 
   const submit = (): void => {
     if (text.trim()) {
@@ -209,22 +267,38 @@ function Composer({ onSend }: { onSend: (text: string) => void }): JSX.Element {
   };
 
   return (
-    <div className="composer">
-      <input
-        ref={field}
-        placeholder="Message"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            submit();
-          }
-        }}
-      />
-      <button onClick={submit} disabled={!text.trim()}>
-        Send
-      </button>
+    <div className="composer-wrap">
+      {replyTo && (
+        <div className="reply-bar">
+          <span className="quote-bar">
+            <span className="quote-author">Replying to {replyAuthor}</span>
+            <span className="quote-text">{replyTo.text}</span>
+          </span>
+          <button className="icon" onClick={onCancelReply} aria-label="Cancel reply" title="Cancel reply">
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="composer">
+        <input
+          ref={field}
+          placeholder="Message"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+            if (e.key === 'Escape' && replyTo) {
+              onCancelReply();
+            }
+          }}
+        />
+        <button onClick={submit} disabled={!text.trim()}>
+          Send
+        </button>
+      </div>
     </div>
   );
 }
