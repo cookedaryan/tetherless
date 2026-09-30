@@ -32,6 +32,13 @@ export class EngineClient extends EventEmitter {
     private readonly command: string,
     private readonly args: string[] = [],
     private readonly env: NodeJS.ProcessEnv = {},
+    /**
+     * The engine's working directory, which is not cosmetic: in development the engine finds the
+     * pinned development certificate at `../chat-server/src/main/resources/`, relative to where it
+     * runs. Inheriting the caller's directory made TLS trust depend on where Electron happened to
+     * be launched from.
+     */
+    private readonly cwd?: string,
   ) {
     super();
   }
@@ -44,6 +51,7 @@ export class EngineClient extends EventEmitter {
     try {
       this.child = spawn(this.command, this.args, {
         env: { ...process.env, ...this.env },
+        cwd: this.cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         // No shell, deliberately: the wildcard classpath is expanded by java, and a shell here
         // would be a command-injection surface for nothing.

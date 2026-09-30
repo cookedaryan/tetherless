@@ -1,278 +1,173 @@
-import { useCallback, useEffect, useState } from 'react';
-import type {
-  ConnectionState,
-  EngineConversation,
-  EngineError,
-  EngineStatus,
-  TetherlessBridge,
-} from '../shared/protocol';
-
-declare global {
-  interface Window {
-    tetherless: TetherlessBridge;
-  }
-}
-
-const engine = () => window.tetherless;
+import { useState } from 'react';
+import { useEngine } from './useEngine';
+import { Sidebar } from './components/Sidebar';
+import { ChatPane } from './components/ChatPane';
+import type { EngineError } from '../shared/protocol';
 
 export function App(): JSX.Element {
-  const [status, setStatus] = useState<EngineStatus | null>(null);
-  const [connection, setConnection] = useState<ConnectionState>('DISCONNECTED');
-  const [conversations, setConversations] = useState<EngineConversation[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const e = useEngine();
 
-  const refresh = useCallback(async () => {
-    const next = await engine().invoke('status');
-    setStatus(next);
-    if (next.connectionState) {
-      setConnection(next.connectionState);
-    }
-    if (next.unlocked) {
-      const { conversations: rows } = await engine().invoke('listConversations');
-      setConversations(rows);
-    }
-  }, []);
-
-  useEffect(() => {
-    const offReady = engine().on('ready', () => void refresh());
-    const offState = engine().on('connectionState', ({ state }) => setConnection(state));
-    const offDown = engine().on('engineDown', () =>
-      setError('The engine stopped. Messages cannot be sent until it restarts.'),
-    );
-    void refresh();
-    return () => {
-      offReady();
-      offState();
-      offDown();
-    };
-  }, [refresh]);
-
-  if (!status) {
+  if (!e.status) {
     return <Centred>Starting…</Centred>;
   }
 
-  if (!status.unlocked) {
+  if (!e.status.unlocked) {
     return (
       <SignIn
-        firstRun={!status.identityExists}
-        error={error}
-        onError={setError}
-        onUnlocked={() => {
-          setError(null);
-          void refresh();
-        }}
+        firstRun={!e.status.identityExists}
+        error={e.error}
+        onError={e.setError}
+        onUnlock={e.unlock}
       />
     );
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <header
-        style={{
-          height: 60,
-          flex: '0 0 60px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '0 18px',
-          background: 'var(--surface)',
-          borderBottom: '1px solid var(--divider)',
-        }}
-      >
-        <strong>Tetherless</strong>
-        <span className="muted">{status.displayName}</span>
-        <span style={{ flexGrow: 1 }} />
-        <span className="muted">{connection.toLowerCase()}</span>
-        <button
-          onClick={() => {
-            engine()
-              .invoke('connect', {})
-              .catch((e: EngineError) => setError(e.message));
-          }}
-          disabled={connection === 'CONNECTED'}
-        >
-          Connect
-        </button>
-      </header>
+  const active = e.conversations.find((c) => c.peerId === e.activePeer);
 
-      {error && (
-        <div style={{ padding: '10px 18px', background: 'var(--bubble-error)', color: 'var(--danger)' }}>
-          {error}
+  return (
+    <div className="app">
+      <div className="titlebar">
+        <span className="muted small">{e.status.displayName}</span>
+        <span className="mono small self-id" title="Your peer id — give this to someone to be reached">
+          {e.status.clientId}
+        </span>
+        <span style={{ flexGrow: 1 }} />
+        <span className={`dot ${e.connection.toLowerCase()}`} />
+        <span className="muted small">{label(e.connection)}</span>
+        {e.connection !== 'CONNECTED' && (
+          <button className="quiet small" onClick={e.connect}>
+            Connect
+          </button>
+        )}
+      </div>
+
+      {e.error && (
+        <div className="banner" role="alert">
+          {e.error}
+          <button className="quiet small" onClick={() => e.setError(null)}>
+            Dismiss
+          </button>
         </div>
       )}
 
-      <div style={{ display: 'flex', flexGrow: 1, minHeight: 0 }}>
-        <aside
-          style={{
-            width: 320,
-            flex: '0 0 320px',
-            background: 'var(--surface)',
-            borderRight: '1px solid var(--divider)',
-            overflowY: 'auto',
-          }}
-        >
-          {conversations.length === 0 ? (
-            <p className="muted" style={{ padding: 18 }}>
-              No conversations yet.
-            </p>
-          ) : (
-            conversations.map((c) => (
-              <div
-                key={c.peerId}
-                style={{
-                  height: 68,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 11,
-                  padding: '0 14px',
-                  borderBottom: '1px solid var(--divider)',
-                }}
-              >
-                <div style={{ flexGrow: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>{c.displayName}</div>
-                  <div
-                    className="muted"
-                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  >
-                    {c.lastMessage}
-                  </div>
-                </div>
-                {c.unread > 0 && (
-                  <span
-                    style={{
-                      background: 'var(--unread)',
-                      color: 'var(--unread-ink)',
-                      borderRadius: 10,
-                      padding: '2px 7px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {c.unread}
-                  </span>
-                )}
-              </div>
-            ))
-          )}
-        </aside>
-
-        <main
-          style={{
-            flexGrow: 1,
-            background: 'var(--chat-bg)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <p className="muted">Your safety number</p>
-          <p className="mono" style={{ maxWidth: 440, textAlign: 'center', lineHeight: 1.8 }}>
-            {status.fingerprint}
-          </p>
-        </main>
+      <div className="body">
+        <Sidebar
+          conversations={e.conversations}
+          activePeer={e.activePeer}
+          selfId={e.status.clientId}
+          onOpen={(id) => void e.open(id)}
+          onStartChat={(id) => void e.startChat(id)}
+        />
+        <ChatPane
+          conversation={active}
+          messages={e.messages}
+          fingerprints={e.fingerprints}
+          peerTyping={e.peerTyping}
+          onSend={(text) => void e.send(text)}
+          onSetVerified={(id, v) => void e.setVerified(id, v)}
+        />
       </div>
     </div>
   );
+}
+
+function label(state: string): string {
+  if (state === 'CONNECTED') {
+    return 'connected';
+  }
+  if (state === 'CONNECTING' || state === 'RECONNECTING') {
+    return 'connecting…';
+  }
+  return 'offline';
 }
 
 function SignIn(props: {
   firstRun: boolean;
   error: string | null;
   onError: (message: string | null) => void;
-  onUnlocked: () => void;
+  onUnlock: (passphrase: string, displayName?: string) => Promise<void>;
 }): JSX.Element {
-  const { firstRun, error, onError, onUnlocked } = props;
+  const { firstRun, error, onError, onUnlock } = props;
   const [passphrase, setPassphrase] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const blocked = busy || passphrase.length === 0 || (firstRun && displayName.trim().length === 0);
+
   const submit = async (): Promise<void> => {
+    if (blocked) {
+      return;
+    }
     setBusy(true);
     onError(null);
     try {
-      await engine().invoke('unlock', {
-        passphrase,
-        displayName: firstRun ? displayName : undefined,
-      });
+      await onUnlock(passphrase, firstRun ? displayName.trim() : undefined);
       setPassphrase('');
-      onUnlocked();
-    } catch (e) {
-      onError((e as EngineError).message);
+    } catch (err) {
+      onError((err as EngineError).message);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Centred>
-      <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 22 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, letterSpacing: '-0.4px' }}>
-            {firstRun ? 'Create your identity' : 'Welcome back'}
-          </h1>
-          <p className="muted" style={{ marginTop: 6 }}>
-            {firstRun
-              ? 'One passphrase protects your key and encrypts your history.'
-              : 'Unlock this device to continue.'}
-          </p>
-        </div>
+    <div className="signin">
+      <div className="signin-brand">
+        <h1>Tetherless</h1>
+        <p className="muted">Your keys never leave this device.</p>
+        <p className="muted small">
+          Messages are encrypted here and decrypted on your peer&apos;s machine. The relay in the
+          middle is assumed hostile — it routes ciphertext and can read none of it.
+        </p>
+      </div>
+
+      <div className="signin-form">
+        <h2>{firstRun ? 'Create your identity' : 'Welcome back'}</h2>
+        <p className="muted">
+          {firstRun
+            ? 'One passphrase protects your key and encrypts your history.'
+            : 'Unlock this device to continue.'}
+        </p>
 
         {firstRun && (
-          <label style={{ display: 'block' }}>
-            <span className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
-              Display name
-            </span>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+          <label>
+            <span className="field-label">Display name</span>
+            <input value={displayName} onChange={(ev) => setDisplayName(ev.target.value)} autoFocus />
           </label>
         )}
 
-        <label style={{ display: 'block' }}>
-          <span className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
-            Passphrase
-          </span>
+        <label>
+          <span className="field-label">Passphrase</span>
           <input
             type="password"
             value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !busy) {
+            autoFocus={!firstRun}
+            onChange={(ev) => setPassphrase(ev.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter') {
                 void submit();
               }
             }}
           />
         </label>
 
-        {error && <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>}
+        {error && <p className="error">{error}</p>}
 
-        <button onClick={() => void submit()} disabled={busy || passphrase.length === 0}>
-          {firstRun ? 'Create identity' : 'Unlock'}
+        <button onClick={() => void submit()} disabled={blocked}>
+          {busy ? 'Working…' : firstRun ? 'Create identity' : 'Unlock'}
         </button>
 
         {firstRun && (
-          <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
+          <p className="muted small">
             This passphrase is never stored and cannot be recovered. Lose it and the message history
             is gone with it.
           </p>
         )}
       </div>
-    </Centred>
+    </div>
   );
 }
 
 function Centred({ children }: { children: React.ReactNode }): JSX.Element {
-  return (
-    <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--page)',
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <div className="centred">{children}</div>;
 }

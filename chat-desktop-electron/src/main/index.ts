@@ -9,6 +9,8 @@ const isDev = !app.isPackaged;
 interface Launch {
   command: string;
   args: string[];
+  /** Set deliberately; see EngineClient. Never left to be inherited. */
+  cwd: string;
 }
 
 /**
@@ -32,21 +34,19 @@ function engineLaunch(): Launch {
     return {
       command: join(packagedRoot, 'runtime', 'bin', exe),
       args: ['-cp', join(packagedRoot, 'lib', '*'), mainClass],
+      cwd: packagedRoot,
     };
   }
 
-  const install = join(
-    app.getAppPath(),
-    '..',
-    'desktop-engine',
-    'build',
-    'install',
-    'desktop-engine',
-  );
+  // The module directory, so that `../chat-server/src/main/resources/dev-keystore.p12` - where the
+  // engine looks for the development certificate - resolves the same way it does under Gradle.
+  const engineModule = join(app.getAppPath(), '..', 'desktop-engine');
+  const install = join(engineModule, 'build', 'install', 'desktop-engine');
   const javaHome = process.env.JAVA_HOME;
   return {
     command: javaHome ? join(javaHome, 'bin', exe) : exe,
     args: ['-cp', join(install, 'lib', '*'), mainClass],
+    cwd: engineModule,
   };
 }
 
@@ -101,7 +101,7 @@ function startEngine(): void {
     env.JAVA_TOOL_OPTIONS = `-Dtetherless.config.dir=${process.env.TETHERLESS_CONFIG_DIR}`;
   }
   const launch = engineLaunch();
-  engine = new EngineClient(launch.command, launch.args, env);
+  engine = new EngineClient(launch.command, launch.args, env, launch.cwd);
 
   engine.onEvent((event: EventName, payload) => {
     window?.webContents.send('engine:event', { event, payload });

@@ -12,7 +12,8 @@
     "build": "npm run build:main && npm run build:renderer",
     "dev:renderer": "vite",
     "start": "npm run build:main && electron .",
-    "engine": "cd .. && gradlew :desktop-engine:installDist"
+    "engine": "cd .. && gradlew :desktop-engine:installDist",
+    "e2e": "node scripts/e2e-roundtrip.js"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
