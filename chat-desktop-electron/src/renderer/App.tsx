@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEngine } from './useEngine';
 import { notificationContent } from './format';
+import { conversationFor } from './conversations';
 import { Sidebar } from './components/Sidebar';
 import { ChatPane } from './components/ChatPane';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -70,7 +71,7 @@ export function App(): JSX.Element {
     );
   }
 
-  const active = e.conversations.find((c) => c.peerId === e.activePeer);
+  const active = conversationFor(e.conversations, e.activePeer);
 
   return (
     <div className="app">
