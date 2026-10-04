@@ -1,0 +1,2009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tetherless — Security &amp; Engineering Audit Report</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 13mm 12mm 13mm 12mm;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1e293b;
+    background-color: #ffffff;
+    line-height: 1.48;
+    font-size: 8.9pt;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4, h5 {
+    color: #0f172a;
+    font-weight: 700;
+    margin-top: 0;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Cover Header Card */
+  .cover-card {
+    background: linear-gradient(135deg, #090d16 0%, #111827 50%, #1e293b 100%);
+    color: #ffffff;
+    padding: 20px 22px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    border: 1px solid #334155;
+    page-break-inside: avoid;
+  }
+
+  .cover-card .project-badge {
+    display: inline-block;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .cover-card h1 {
+    color: #ffffff;
+    font-size: 18pt;
+    margin: 3px 0 5px 0;
+    letter-spacing: -0.4px;
+  }
+
+  .cover-card .subtitle {
+    color: #94a3b8;
+    font-size: 9.8pt;
+    font-weight: 400;
+    margin-bottom: 14px;
+    line-height: 1.4;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.65);
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .meta-item {
+    font-size: 7.5pt;
+    color: #94a3b8;
+  }
+
+  .meta-item strong {
+    display: block;
+    color: #f1f5f9;
+    font-size: 8.4pt;
+    margin-top: 1px;
+  }
+
+  .status-verdict {
+    color: #f87171 !important;
+  }
+
+  /* Metric KPI Cards */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .kpi-card {
+    border-radius: 6px;
+    padding: 8px 12px;
+    text-align: center;
+    border: 1px solid #cbd5e1;
+    page-break-inside: avoid;
+  }
+
+  .kpi-crit { background-color: #fef2f2; border-color: #fca5a5; }
+  .kpi-high { background-color: #fffbeb; border-color: #fde68a; }
+  .kpi-med  { background-color: #eff6ff; border-color: #bfdbfe; }
+  .kpi-low  { background-color: #f8fafc; border-color: #cbd5e1; }
+
+  .kpi-num {
+    font-size: 16pt;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+
+  .kpi-crit .kpi-num { color: #dc2626; }
+  .kpi-high .kpi-num { color: #d97706; }
+  .kpi-med  .kpi-num { color: #2563eb; }
+  .kpi-low  .kpi-num { color: #475569; }
+
+  .kpi-label {
+    font-size: 7.2pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .kpi-crit .kpi-label { color: #991b1b; }
+  .kpi-high .kpi-label { color: #92400e; }
+  .kpi-med  .kpi-label { color: #1e40af; }
+  .kpi-low  .kpi-label { color: #334155; }
+
+  /* Sections */
+  .section-container {
+    margin-bottom: 16px;
+  }
+
+  .section-header {
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+    margin-top: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .section-header h2 {
+    font-size: 12pt;
+    color: #0f172a;
+    margin: 0;
+  }
+
+  .section-header .section-tag {
+    font-size: 7.8pt;
+    font-weight: 600;
+    color: #64748b;
+  }
+
+  .subsection-banner {
+    background: #f1f5f9;
+    border-left: 4px solid #0284c7;
+    padding: 6px 10px;
+    border-radius: 0 4px 4px 0;
+    margin: 12px 0 8px 0;
+    page-break-inside: avoid;
+    break-after: avoid;
+  }
+
+  .subsection-banner h3 {
+    font-size: 10pt;
+    color: #0f172a;
+    margin: 0 0 2px 0;
+  }
+
+  .subsection-banner p {
+    font-size: 7.6pt;
+    color: #475569;
+    margin: 0;
+  }
+
+  /* Executive Box */
+  .exec-box {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #0f172a;
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 8.6pt;
+    line-height: 1.5;
+    color: #1e293b;
+    margin-bottom: 12px;
+    page-break-inside: avoid;
+  }
+
+  /* Scope & Methodology Box */
+  .scope-box {
+    background-color: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-left: 4px solid #16a34a;
+    border-radius: 4px;
+    padding: 9px 12px;
+    font-size: 8.2pt;
+    line-height: 1.45;
+    color: #166534;
+    margin-top: 10px;
+    page-break-inside: avoid;
+  }
+
+  .scope-box strong {
+    color: #14532d;
+  }
+
+  /* Finding Card */
+  .finding-card {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background-color: #ffffff;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    page-break-inside: avoid;
+    break-inside: avoid;
+    overflow: hidden;
+  }
+
+  .finding-card.sev-Critical { border-top: 3.5px solid #dc2626; }
+  .finding-card.sev-High     { border-top: 3.5px solid #d97706; }
+  .finding-card.sev-Medium   { border-top: 3.5px solid #2563eb; }
+  .finding-card.sev-Low      { border-top: 3.5px solid #64748b; }
+
+  .finding-top {
+    background-color: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 7px 11px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .finding-id-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-grow: 1;
+  }
+
+  .finding-id-badge {
+    background-color: #0f172a;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 7.5pt;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: Consolas, monospace;
+    white-space: nowrap;
+  }
+
+  .finding-title {
+    font-size: 9.3pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+  }
+
+  .finding-badges {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 7pt;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .badge-critical { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+  .badge-high     { background-color: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+  .badge-medium   { background-color: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .badge-low      { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+  .badge-conf     { background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+
+  .finding-location-bar {
+    background-color: #fafafa;
+    border-bottom: 1px solid #f1f5f9;
+    padding: 5px 11px;
+    font-size: 7.4pt;
+    color: #475569;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .loc-tag {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: Consolas, monospace;
+    font-size: 7.2pt;
+    color: #334155;
+  }
+
+  .finding-body {
+    padding: 8px 11px;
+    font-size: 8.4pt;
+  }
+
+  .detail-block {
+    margin-bottom: 7px;
+  }
+
+  .detail-block:last-child {
+    margin-bottom: 0;
+  }
+
+  .detail-label {
+    font-size: 7.4pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+  }
+
+  .label-wrong    { color: #991b1b; }
+  .label-scenario { color: #9a3412; }
+  .label-impact   { color: #4338ca; }
+  .label-fix      { color: #065f46; }
+
+  .box-wrong {
+    background-color: #ffffff;
+    border-left: 3px solid #ef4444;
+    padding: 5px 9px;
+    border-radius: 0 4px 4px 0;
+    margin-bottom: 6px;
+  }
+
+  .box-scenario {
+    background-color: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-left: 3px solid #ea580c;
+    padding: 5px 9px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+  }
+
+  .box-impact {
+    background-color: #f5f3ff;
+    border: 1px solid #e0e7ff;
+    border-left: 3px solid #6366f1;
+    padding: 5px 9px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+  }
+
+  .box-fix {
+    background-color: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-left: 3px solid #10b981;
+    padding: 5px 9px;
+    border-radius: 4px;
+  }
+
+  /* Code Boxes */
+  .code-box {
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 6px 9px;
+    border-radius: 4px;
+    font-family: Consolas, "Fira Code", monospace;
+    font-size: 7.4pt;
+    line-height: 1.35;
+    overflow-x: auto;
+    margin: 4px 0;
+    border: 1px solid #1e293b;
+    page-break-inside: avoid;
+  }
+
+  .inline-code {
+    font-family: Consolas, "Fira Code", monospace;
+    font-size: 7.8pt;
+    background-color: #f1f5f9;
+    color: #0f172a;
+    padding: 1px 3px;
+    border-radius: 3px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .math-expr {
+    font-family: "Cambria Math", "Times New Roman", serif;
+    font-size: 8.8pt;
+    color: #0f172a;
+  }
+
+  /* Lists */
+  .step-list, .bullet-list {
+    margin: 2px 0;
+    padding-left: 16px;
+  }
+
+  .step-list li, .bullet-list li {
+    margin-bottom: 2px;
+    line-height: 1.38;
+  }
+
+  p {
+    margin: 0 0 4px 0;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+    font-size: 7.8pt;
+    page-break-inside: avoid;
+  }
+
+  th {
+    background-color: #0f172a;
+    color: #ffffff;
+    text-align: left;
+    padding: 5px 7px;
+    font-weight: 600;
+    border: 1px solid #334155;
+    font-size: 7.6pt;
+  }
+
+  td {
+    padding: 5px 7px;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+    line-height: 1.35;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+
+  /* Strengths & Limitations Cards */
+  .card-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .item-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    padding: 7px 10px;
+    background-color: #ffffff;
+    page-break-inside: avoid;
+  }
+
+  .strength-card {
+    border-left: 4px solid #10b981;
+    background-color: #fafdfb;
+  }
+
+  .limit-card {
+    border-left: 4px solid #f59e0b;
+    background-color: #fffdfa;
+  }
+
+  .item-title {
+    font-size: 8.6pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .item-body {
+    font-size: 8pt;
+    color: #334155;
+    line-height: 1.38;
+  }
+
+  .icon-badge {
+    font-size: 6.8pt;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+
+  .icon-strength { background-color: #d1fae5; color: #065f46; }
+  .icon-limit    { background-color: #fef3c7; color: #92400e; }
+
+  /* Priorities Accents */
+  .prio-rank {
+    font-weight: 800;
+    font-size: 8pt;
+    text-align: center;
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    border-radius: 50%;
+    background: #0f172a;
+    color: white;
+  }
+
+  .prio-rank-1 { background: #dc2626; }
+  .prio-rank-2 { background: #e11d48; }
+  .prio-rank-3 { background: #d97706; }
+  .prio-rank-4 { background: #b45309; }
+  .prio-rank-5 { background: #2563eb; }
+
+  .page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .doc-link {
+    color: #0284c7;
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover-card">
+  <div class="project-badge">Tetherless Secure Communications • Security Audit</div>
+  <h1>TETHERLESS: SECURITY &amp; ENGINEERING AUDIT REPORT</h1>
+  <div class="subtitle">Comprehensive Independent Architecture, Cryptographic &amp; Source Code Implementation Review</div>
+  <div class="meta-grid">
+    <div class="meta-item">TARGET SYSTEM<strong>Tetherless (v1.0-SNAPSHOT)</strong></div>
+    <div class="meta-item">MODULES IN AUDIT<strong>core-shared, chat-server, chat-desktop</strong></div>
+    <div class="meta-item">AUDIT DATE<strong>September 2026</strong></div>
+    <div class="meta-item">DEPLOYMENT VERDICT<strong class="status-verdict">NOT READY FOR HOSTILE DEPLOYMENT</strong></div>
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi-card kpi-crit">
+    <div class="kpi-num">2</div>
+    <div class="kpi-label">Critical Vulnerabilities</div>
+  </div>
+  <div class="kpi-card kpi-high">
+    <div class="kpi-num">7</div>
+    <div class="kpi-label">High Severity Findings</div>
+  </div>
+  <div class="kpi-card kpi-med">
+    <div class="kpi-num">10</div>
+    <div class="kpi-label">Medium Severity Findings</div>
+  </div>
+  <div class="kpi-card kpi-low">
+    <div class="kpi-num">4</div>
+    <div class="kpi-label">Low Severity Findings</div>
+  </div>
+</div>
+
+<div class="section-container">
+  <div class="section-header">
+    <h2>1. Executive Summary</h2>
+    <span class="section-tag">Systemic Posture &amp; Core Axiom Assessment</span>
+  </div>
+  <div class="exec-box">
+<p>Tetherless exhibits commendable engineering discipline in its cryptographic foundations: message bodies are protected with AES-256-GCM, DH keys are exchanged over RFC 3526 Group 14 with subgroup validation and left-padding normalisation, and the wire format relies on an explicit binary codec rather than Java deserialisation. However, the end-to-end security guarantee is undermined by several critical protocol and implementation vulnerabilities: inbound frames are never validated against the recipient’s own client ID, signatures on control frames (<code class="inline-code">DELIVERY_ACK</code>, <code class="inline-code">READ_RECEIPT</code>, <code class="inline-code">TYPING</code>, <code class="inline-code">KEY_EXCHANGE_REJECT</code>) are completely bypassed when the signature is omitted, inbound GCM nonce direction bits are never verified, and TLS hostname verification is disabled on raw socket handshakes. Furthermore, unauthenticated relay registration permits trivial identity squatting and denial-of-service, and a null payload on acknowledgement frames crashes the client reader loop. In its current state, Tetherless is <strong>not ready for production or hostile deployments</strong> until these fundamental authentication, routing, and lifecycle defects are resolved.</p>
+  </div>
+</div>
+
+<div class="section-container">
+  <div class="section-header">
+    <h2>Audit Distribution Matrix</h2>
+    <span class="section-tag">Findings by Technical Domain</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 10%;">Section</th>
+        <th>Audit Domain</th>
+        <th style="width: 10%; text-align: center;">Critical</th>
+        <th style="width: 10%; text-align: center;">High</th>
+        <th style="width: 10%; text-align: center;">Medium</th>
+        <th style="width: 10%; text-align: center;">Low</th>
+        <th style="width: 10%; text-align: center;">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr>
+        <td><strong>3.1</strong></td>
+        <td><strong>§3.1 Cryptography & Protocol</strong><br><span style="color: #64748b; font-size: 7.2pt;">Primitives, RFC 3526 DH key exchange, nonces, key storage, and wire signatures.</span></td>
+        <td style="text-align: center; font-weight: 700; color: #dc2626;">2</td>
+        <td style="text-align: center; font-weight: 700; color: #d97706;">2</td>
+        <td style="text-align: center; font-weight: 700; color: #2563eb;">3</td>
+        <td style="text-align: center; font-weight: 700; color: #475569;">2</td>
+        <td style="text-align: center; font-weight: 800; background: #f1f5f9;">9</td>
+      </tr>
+
+      <tr>
+        <td><strong>3.2</strong></td>
+        <td><strong>§3.2 Relay / Server Architecture</strong><br><span style="color: #64748b; font-size: 7.2pt;">Dumb relay queuing, connection registration, socket lifecycle, and network isolation.</span></td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #d97706;">2</td>
+        <td style="text-align: center; font-weight: 700; color: #2563eb;">1</td>
+        <td style="text-align: center; font-weight: 700; color: #475569;">1</td>
+        <td style="text-align: center; font-weight: 800; background: #f1f5f9;">4</td>
+      </tr>
+
+      <tr>
+        <td><strong>3.3</strong></td>
+        <td><strong>§3.3 Client Correctness & State</strong><br><span style="color: #64748b; font-size: 7.2pt;">Desktop and mobile state machines, ack processing, message deduplication, and parsing.</span></td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #d97706;">2</td>
+        <td style="text-align: center; font-weight: 700; color: #2563eb;">1</td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 800; background: #f1f5f9;">3</td>
+      </tr>
+
+      <tr>
+        <td><strong>3.4</strong></td>
+        <td><strong>§3.4 Input Validation & Injection</strong><br><span style="color: #64748b; font-size: 7.2pt;">Wire codecs, character sets, file permissions, and boundary deserialization.</span></td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #2563eb;">1</td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 800; background: #f1f5f9;">1</td>
+      </tr>
+
+      <tr>
+        <td><strong>3.5</strong></td>
+        <td><strong>§3.5 Build, Supply Chain & Secrets</strong><br><span style="color: #64748b; font-size: 7.2pt;">Dependencies, CVE exposure, release build gates, and SpotBugs static analysis filters.</span></td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #d97706;">1</td>
+        <td style="text-align: center; font-weight: 700; color: #2563eb;">2</td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 800; background: #f1f5f9;">3</td>
+      </tr>
+
+      <tr>
+        <td><strong>3.6</strong></td>
+        <td><strong>§3.6 Tests & Verification</strong><br><span style="color: #64748b; font-size: 7.2pt;">Test vector completeness, adversarial coverage, stress tests, and lifecycle assertions.</span></td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #2563eb;">1</td>
+        <td style="text-align: center; font-weight: 700; color: #475569;">1</td>
+        <td style="text-align: center; font-weight: 800; background: #f1f5f9;">2</td>
+      </tr>
+
+      <tr>
+        <td><strong>3.7</strong></td>
+        <td><strong>§3.7 Architecture, Maintainability & Docs</strong><br><span style="color: #64748b; font-size: 7.2pt;">Documentation fidelity, specification drift, and code maintainability.</span></td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 700; color: #2563eb;">1</td>
+        <td style="text-align: center; font-weight: 700; color: #94a3b8;">0</td>
+        <td style="text-align: center; font-weight: 800; background: #f1f5f9;">1</td>
+      </tr>
+
+      <tr style="background: #e2e8f0; font-weight: 800;">
+        <td colspan="2">Total Audit Findings Across All Domains</td>
+        <td style="text-align: center; color: #dc2626;">2</td>
+        <td style="text-align: center; color: #d97706;">7</td>
+        <td style="text-align: center; color: #2563eb;">10</td>
+        <td style="text-align: center; color: #475569;">4</td>
+        <td style="text-align: center; font-size: 8.8pt;">23</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="scope-box">
+    <strong>Audit Scope &amp; Verification Methodology:</strong> Complete architectural and source code security review of the Tetherless multi-module codebase (<code class="inline-code">core-shared</code>, <code class="inline-code">chat-server</code>, <code class="inline-code">chat-desktop</code>). Verification evaluated cryptographic correctness (AES-256-GCM nonces, RFC 3526 DH group validation, HKDF derivation), wire framing integrity, state-machine monotonicity, relay isolation against actively hostile operators, supply chain dependencies, and build gates. Automated build and regression verification passed cleanly across all modules (<code class="inline-code">:core-shared:check</code>, <code class="inline-code">:chat-server:check</code>, <code class="inline-code">:chat-desktop:check</code>, <code class="inline-code">:chat-desktop:integTest</code>).
+  </div>
+</div>
+
+<div class="page-break"></div>
+<div class="section-container">
+  <div class="section-header">
+    <h2>2. Findings Report</h2>
+    <span class="section-tag">Prioritized Defect Specifications (§3.1 – §3.7)</span>
+  </div>
+
+  <div class="subsection-banner">
+    <h3>§3.1 Cryptography & Protocol</h3>
+    <p>Primitives, RFC 3526 DH key exchange, nonces, key storage, and wire signatures. — 9 findings identified in this domain.</p>
+  </div>
+
+  <div class="finding-card sev-Critical">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.1</span>
+        <h4 class="finding-title">Inbound Receiver ID Is Never Validated Across the Client Stack</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-critical">Critical</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L42-L113" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java:42-113</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SecureChat.java#L189-L220" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/session/SecureChat.java:189-220</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L223-L289" class="doc-link"><code class="inline-code">chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java:223-289</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>When a client receives a frame, neither <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java" class="doc-link"><code class="inline-code">SessionManager</code></a>, <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SecureChat.java" class="doc-link"><code class="inline-code">SecureChat</code></a>, nor <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java" class="doc-link"><code class="inline-code">ChatClient</code></a> checks whether <code class="inline-code">msg.getReceiverId()</code> equals the local device&#x27;s <code class="inline-code">clientId</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <ol class="step-list">
+<li>Bob sends a valid <code class="inline-code">KEY_EXCHANGE_INIT</code> or unencrypted control frame (<code class="inline-code">DELIVERY_ACK</code>, <code class="inline-code">READ_RECEIPT</code>) intended for Charlie (<code class="inline-code">receiverId = Charlie</code>, <code class="inline-code">senderId = Bob</code>).</li>
+<li>A malicious or misconfigured relay forwards this frame to Alice (<code class="inline-code">clientId = Alice</code>).</li>
+<li>Alice verifies Bob&#x27;s signature against <code class="inline-code">msg.canonicalBytesForSigning()</code> (which passes, as Bob genuinely signed <code class="inline-code">receiverId = Charlie</code>).</li>
+<li>Alice&#x27;s client does not verify that <code class="inline-code">msg.getReceiverId()</code> matches Alice, processes the frame under Alice&#x27;s session with Bob, advances Alice&#x27;s handshake or marks Alice&#x27;s messages as delivered/read, and can trigger cross-session handshake collision or state corruption.</li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Message recipient binding is a fundamental invariant of any secure messaging protocol. Failing to enforce it permits cross-session reflection, misrouting attacks, and state confusion.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L42" class="doc-link"><code class="inline-code">SessionManager.onMessage</code></a>, add a strict assertion rejecting any frame where <code class="inline-code">msg.getReceiverId() != null &amp;&amp; !localClientId.equals(msg.getReceiverId())</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Critical">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.2</span>
+        <h4 class="finding-title">Signature Verification Completely Bypassed on Control &amp; Ack Frames When Signature Is Absent</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-critical">Critical</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/SignatureVerifier.java#L19-L27" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/protocol/SignatureVerifier.java:19-27</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/SignatureVerifier.java#L19" class="doc-link"><code class="inline-code">SignatureVerifier.verify()</code></a>:</p>
+<pre class="code-box"><code class="language-java">  boolean requiresSignature = (msg.getType() == MessageType.TEXT_MESSAGE || 
+                               msg.getType() == MessageType.KEY_EXCHANGE_INIT || 
+                               msg.getType() == MessageType.KEY_EXCHANGE_REPLY);
+                               
+  if (msg.getSignature() == null || msg.getSignature().length == 0) {
+      return requiresSignature ? VerificationResult.MISSING_SIGNATURE : VerificationResult.VALID;
+  }</code></pre>
+<p>  If <code class="inline-code">msg.getSignature()</code> is null or empty, <code class="inline-code">SignatureVerifier</code> returns <code class="inline-code">VerificationResult.VALID</code> for any message type other than <code class="inline-code">TEXT_MESSAGE</code>, <code class="inline-code">KEY_EXCHANGE_INIT</code>, and <code class="inline-code">KEY_EXCHANGE_REPLY</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <ol class="step-list">
+<li>An active relay operator fabricates an unsigned frame with <code class="inline-code">type = DELIVERY_ACK</code>, <code class="inline-code">senderId = Bob</code>, <code class="inline-code">receiverId = Alice</code>, <code class="inline-code">payload = &lt;messageId&gt;</code>, and <code class="inline-code">signature = null</code>.</li>
+<li>Alice receives the frame. <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L60" class="doc-link"><code class="inline-code">SessionManager.onMessage</code></a> invokes <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/SignatureVerifier.java#L19" class="doc-link"><code class="inline-code">SignatureVerifier.verify</code></a>, which returns <code class="inline-code">VALID</code>.</li>
+<li><a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L284" class="doc-link"><code class="inline-code">ChatClient.onDelivered</code></a> executes <code class="inline-code">messageRepository.updateStatus(messageId, Status.DELIVERED)</code>.</li>
+<li>Alice sees two checkmarks indicating Bob received the message, when Bob never received it. A hostile relay can similarly forge <code class="inline-code">READ_RECEIPT</code> (falsely marking conversations read), spoof <code class="inline-code">TYPING</code>, or send <code class="inline-code">KEY_EXCHANGE_REJECT</code> to terminate handshakes without holding Bob&#x27;s private key.</li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Directly contradicts <a href="file:///c:/Users/aryan/Projects/tetherless/docs/protocol.md#L91" class="doc-link"><code class="inline-code">docs/protocol.md §5</code></a> and <a href="file:///c:/Users/aryan/Projects/tetherless/docs/security.md#L184" class="doc-link"><code class="inline-code">docs/security.md §5</code></a>, which claim all control frames are signed. Destroys peer authentication for message delivery and receipt status.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Include all inter-peer control types (<code class="inline-code">DELIVERY_ACK</code>, <code class="inline-code">READ_RECEIPT</code>, <code class="inline-code">TYPING</code>, <code class="inline-code">KEY_EXCHANGE_REJECT</code>) in <code class="inline-code">requiresSignature</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-High">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.3</span>
+        <h4 class="finding-title">Nonce Direction Bit Is Ignored on Inbound Messages</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-high">High</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L96-L102" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java:96-102</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p><a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L97" class="doc-link"><code class="inline-code">SessionManager</code></a> parses <code class="inline-code">int direction = bb.getInt();</code> from the 12-byte IV, but never verifies <code class="inline-code">direction</code> against the expected peer direction bit.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <ol class="step-list">
+<li>Alice (<code class="inline-code">lowSide = true</code>, transmitting on <code class="inline-code">direction = 1</code>) sends message <span class="math-expr"><em>M</em></span> to Bob.</li>
+<li>If an adversary reflects Alice&#x27;s message or if a corrupted/malicious peer sends frames with <code class="inline-code">direction = 1</code> rather than <code class="inline-code">direction = 0</code>, <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java" class="doc-link"><code class="inline-code">SessionManager</code></a> ignores the mismatch.</li>
+<li>The unverified counter is fed into <code class="inline-code">session.registerReceivedCounter(counter)</code> in <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L100" class="doc-link"><code class="inline-code">SessionManager.java:100</code></a>, consuming a counter slot in the receiver&#x27;s replay window regardless of the direction bit used.</li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>The direction bit was explicitly designed to prevent GCM nonce collision between peers sharing a single key (<a href="file:///c:/Users/aryan/Projects/tetherless/docs/protocol.md#L248" class="doc-link"><code class="inline-code">docs/protocol.md §9</code></a>). Failing to enforce the expected direction bit on the receive path permits direction-confusion and cross-direction counter exhaustion.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L97" class="doc-link"><code class="inline-code">SessionManager.onMessage</code></a>, compute <code class="inline-code">int expectedDirection = (localClientId.compareTo(msg.getSenderId()) &gt; 0) ? 1 : 0;</code> and drop the frame if <code class="inline-code">direction != expectedDirection</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-High">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.4</span>
+        <h4 class="finding-title">TLS Hostname Verification Is Disabled on Client Sockets</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-high">High</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/TlsSupport.java#L235-L241" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/network/TlsSupport.java:235-241</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java#L228-L231" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java:228-231</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>Sockets are created via <code class="inline-code">(SSLSocket) factory.createSocket(host, port)</code> with TLSv1.3 enabled, but <code class="inline-code">SSLParameters.setEndpointIdentificationAlgorithm(&quot;HTTPS&quot;)</code> is never called. Standard JSSE <code class="inline-code">SSLSocket</code> instances do <strong>not</strong> perform hostname verification against Subject Alternative Names (SAN) or CN by default.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <ol class="step-list">
+<li>An organization deploys a relay using a certificate from a trusted CA (e.g., Let&#x27;s Encrypt, as instructed in <a href="file:///c:/Users/aryan/Projects/tetherless/docs/deployment.md#L40" class="doc-link"><code class="inline-code">docs/deployment.md §2</code></a> and <a href="file:///c:/Users/aryan/Projects/tetherless/docs/tls_provisioning.md#L40" class="doc-link"><code class="inline-code">docs/tls_provisioning.md</code></a>).</li>
+<li>The client is configured with a truststore pinning the Let&#x27;s Encrypt Root CA.</li>
+<li>A network attacker on the client&#x27;s local network (or upstream DNS) intercepts traffic to <code class="inline-code">relay.example.org</code> and presents any valid certificate issued by Let&#x27;s Encrypt for <code class="inline-code">attacker-relay.com</code>.</li>
+<li>Because endpoint identification is unset, the client verifies that the certificate chains to Let&#x27;s Encrypt, ignores that the domain does not match <code class="inline-code">relay.example.org</code>, and establishes the TLS connection to the attacker&#x27;s proxy.</li>
+<li>Furthermore, this directly contradicts <a href="file:///c:/Users/aryan/Projects/tetherless/docs/deployment.md#L64-L65" class="doc-link"><code class="inline-code">docs/deployment.md:64-65</code></a>, which claims: <em>&quot;A certificate without a matching SAN fails the handshake regardless of pinning.&quot;</em></li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>CA-pinned configurations are vulnerable to MITM interception by anyone possessing any certificate issued by the same CA.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Configure <code class="inline-code">SSLParameters params = socket.getSSLParameters(); params.setEndpointIdentificationAlgorithm(&quot;HTTPS&quot;); socket.setSSLParameters(params);</code> before starting the TLS handshake.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.5</span>
+        <h4 class="finding-title">Replay Window Denial-of-Service via Counter Jump &amp; Non-Positive Counter Acceptance</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/Session.java#L115-L127" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/session/Session.java:115-127</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/Session.java#L115" class="doc-link"><code class="inline-code">Session.registerReceivedCounter(long counter)</code></a>:</p>
+<pre class="code-box"><code class="language-java">  if (counter &lt;= highestReceivedCounter - REPLAY_WINDOW) {
+      return false;
+  }
+  if (!receivedCounters.add(counter)) {
+      return false;
+  }
+  if (counter &gt; highestReceivedCounter) {
+      highestReceivedCounter = counter;
+      forgetCountersBelowTheWindow();
+  }
+  return true;</code></pre>
+<p>  The counter is not checked for <code class="inline-code">counter &gt; 0</code> or bounded by the session send budget (<code class="inline-code">MAX_SENDS_PER_KEY = 100000</code>). When <code class="inline-code">highestReceivedCounter == 0</code>, negative counters and counter 0 satisfy <code class="inline-code">counter &lt;= -1024 == false</code> and are accepted. More critically, if a peer transmits a validly signed message with counter <code class="inline-code">Long.MAX_VALUE</code>, <code class="inline-code">highestReceivedCounter</code> jumps to <code class="inline-code">Long.MAX_VALUE</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>An attacker (or compromised peer) injects a single validly signed message with <code class="inline-code">counter = Long.MAX_VALUE</code>. The recipient updates <code class="inline-code">highestReceivedCounter = Long.MAX_VALUE</code>. Thereafter, <code class="inline-code">floor = Long.MAX_VALUE - 1024</code>. All legitimate subsequent messages with normal counters (<span class="math-expr"><em>1, 2, 3 \dots</em></span>) satisfy <code class="inline-code">counter &lt;= floor</code> and are discarded permanently, completely bricking the session.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Allows permanent denial of service against a session using a single out-of-order counter jump.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Enforce <code class="inline-code">if (counter &lt;= 0 || counter &gt; MAX_SENDS_PER_KEY) return false;</code> and restrict maximum forward counter leap (<code class="inline-code">counter &gt; highestReceivedCounter + REPLAY_WINDOW</code>).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.6</span>
+        <h4 class="finding-title">Non-Atomic Peer Key Storage &amp; Silent Loss of Pinning on Parsing Failure</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 [`core-shared/src/main/java/com/e2eechat/core/keys/JceKeyStoreManager.java:47-54</span> <span class="loc-tag">📄 110-116`](file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/keys/JceKeyStoreManager.java#L47-L54)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/keys/JceKeyStoreManager.java#L113" class="doc-link"><code class="inline-code">JceKeyStoreManager.storePeerKey</code></a>, the file <code class="inline-code">peers.properties</code> is overwritten directly using <code class="inline-code">new FileOutputStream(peersFile)</code>. If the JVM terminates mid-write, the file is corrupted or zeroed. On the next startup (lines 47–54), if reading <code class="inline-code">peers.properties</code> throws an exception, it logs <code class="inline-code">Could not read the stored peer keys... starting with none</code> and initializes an empty <code class="inline-code">peerProperties</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>A power failure or process crash occurs during <code class="inline-code">storePeerKey()</code>. On restart, <code class="inline-code">peers.properties</code> fails to parse. The client starts with an empty peer store. When known contacts subsequently reconnect and send <code class="inline-code">HELLO</code>, because <code class="inline-code">known.isPresent()</code> is false, the client silently re-trusts their presented keys on first use (TOFU) via <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SecureChat.java#L236" class="doc-link"><code class="inline-code">SecureChat.onHello</code></a> instead of raising <code class="inline-code">PEER_KEY_CHANGED</code>. If an active MITM occurs during this window, the impostor&#x27;s key is pinned without any warning.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Silent reset of trust stores destroys the core TOFU guarantee.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Write to a temporary file (<code class="inline-code">peers.properties.tmp</code>) and atomically move it (<code class="inline-code">Files.move(..., ATOMIC_MOVE)</code>). If the file exists but fails to load, fail closed (abort startup or alert user) rather than silently discarding all pinned keys.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.7</span>
+        <h4 class="finding-title">Sensitive In-Memory DH Key Material Not Zeroed in Heap</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/crypto/DHUtils.java#L78-L91" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/crypto/DHUtils.java:78-91</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p><code class="inline-code">byte[] rawSecret = keyAgreement.generateSecret();</code> and <code class="inline-code">byte[] paddedSecret</code> in <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/crypto/DHUtils.java#L78" class="doc-link"><code class="inline-code">DHUtils.generateSharedSecret</code></a> are discarded without calling <code class="inline-code">Arrays.fill(..., (byte) 0)</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>The un-zeroed 2048-bit Diffie-Hellman shared secret remains in JVM heap memory until collected and overwritten by garbage collection. In a multi-tenant process, crash dump, or heap inspection scenario, raw shared secrets can be recovered.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Incomplete memory hygiene for ephemeral master secrets.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Enclose derivation in a <code class="inline-code">try ... finally</code> block and execute <code class="inline-code">Arrays.fill(rawSecret, (byte) 0)</code> and <code class="inline-code">Arrays.fill(paddedSecret, (byte) 0)</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Low">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.8</span>
+        <h4 class="finding-title">Non-Repudiation vs. Deniability Trade-off in Protocol Design</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-low">Low</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/models/Message.java#L34-L58" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/models/Message.java:34-58</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/MessageSigner.java#L11-L30" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/protocol/MessageSigner.java:11-30</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>Every text message is signed with the sender&#x27;s long-term RSA identity private key (<code class="inline-code">SHA256withRSA</code>) over canonical bytes containing the timestamp, message ID, sender ID, receiver ID, and ciphertext.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>A recipient (or anyone obtaining the recipient’s decrypted database and the signed wire frames) can mathematically prove to a third party (e.g., in a legal or public context) that the specific sender identity signed that exact message at that timestamp. This provides strict cryptographic <strong>non-repudiation</strong>, which is the antithesis of <strong>off-the-record deniability</strong> (as provided by Signal’s X3DH / Double Ratchet using MAC subkeys).</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Architectural mismatch for users expecting plausible deniability in an end-to-end encrypted chat application.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Transition to a deniable authenticated key exchange (e.g., Signal-style X3DH with ephemeral Diffie-Hellman authenticator keys rather than long-term RSA digital signatures on individual chat payloads).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Low">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.1.9</span>
+        <h4 class="finding-title">Dead Code: Orphaned and Incomplete <code class="inline-code">SessionKeyCache</code> Class</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-low">Low</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/keys/SessionKeyCache.java#L1-L26" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/keys/SessionKeyCache.java:1-26</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p><a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/keys/SessionKeyCache.java" class="doc-link"><code class="inline-code">SessionKeyCache</code></a> is listed in documentation and project audit prompt anchors, but is never referenced, instantiated, or used by any class across <code class="inline-code">core-shared</code>, <code class="inline-code">chat-server</code>, or <code class="inline-code">chat-desktop</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>Maintenance overhead and false assumption by auditors that key caching logic is managed by this class, whereas <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java" class="doc-link"><code class="inline-code">SessionManager</code></a> directly maintains sessions.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Incomplete architecture and dead code cause confusion for security reviewers and increase maintenance debt.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Remove the class or integrate it into <code class="inline-code">SessionManager</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection-banner">
+    <h3>§3.2 Relay / Server Architecture</h3>
+    <p>Dumb relay queuing, connection registration, socket lifecycle, and network isolation. — 4 findings identified in this domain.</p>
+  </div>
+
+  <div class="finding-card sev-High">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.2.1</span>
+        <h4 class="finding-title">Unauthenticated Client Registration Permitting Trivial DoS &amp; Peer ID Squatting</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-high">High</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ClientSession.java#L202-L221" class="doc-link"><code class="inline-code">chat-server/src/main/java/com/e2eechat/server/ClientSession.java:202-221</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java#L246-L253" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java:246-253</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ClientSession.java#L202" class="doc-link"><code class="inline-code">ClientSession.run</code></a>, when the relay receives the opening <code class="inline-code">HELLO</code>, it extracts <code class="inline-code">clientId = message.getSenderId()</code> and calls <code class="inline-code">registry.register(clientId, this)</code>. The registration <code class="inline-code">HELLO</code> is unsigned (<a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java#L252" class="doc-link"><code class="inline-code">ConnectionManager.java:252</code></a> uses <code class="inline-code">buildUnsigned()</code>), carries no public key, and includes no proof of possession of the private key matching the <code class="inline-code">PeerId</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <ol class="step-list">
+<li>An attacker determines Alice’s public 32-character hexadecimal <code class="inline-code">PeerId</code>.</li>
+<li>The attacker connects to the relay over TLS and sends a 28-byte raw frame containing <code class="inline-code">HELLO</code> with <code class="inline-code">senderId = Alice</code> and <code class="inline-code">payload = null</code>.</li>
+<li>The relay registers the attacker&#x27;s socket under <code class="inline-code">Alice</code>.</li>
+<li>When the legitimate Alice launches her client and attempts to connect, the relay finds <code class="inline-code">Alice</code> in <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ClientRegistry.java#L26" class="doc-link"><code class="inline-code">ClientRegistry</code></a>, rejects Alice&#x27;s connection with <code class="inline-code">ID_TAKEN</code>, and disconnects her socket.</li>
+<li>The attacker can script this for all known peer IDs, permanently locking all legitimate users out of the relay with minimal resources.</li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Severe denial-of-service and identity squatting on the relay.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Require the registration <code class="inline-code">HELLO</code> to carry a challenge response, nonce signature, or self-signed payload proving possession of the private key whose public key hashes to <code class="inline-code">PeerId</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-High">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.2.2</span>
+        <h4 class="finding-title">Relay Routes Frames Without Verifying Sender Identity</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-high">High</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 [`chat-server/src/main/java/com/e2eechat/server/ClientSession.java:238-240</span> <span class="loc-tag">📄 258</span> <span class="loc-tag">📄 272-296`](file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ClientSession.java#L238-L240)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ClientSession.java#L258" class="doc-link"><code class="inline-code">ClientSession.java:258</code></a>, once a session is established, <code class="inline-code">routeFrame(message.getReceiverId(), frame)</code> forwards the raw encoded bytes without checking if <code class="inline-code">message.getSenderId().equals(this.clientId)</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>A connected client authenticated with <code class="inline-code">clientId = Mallory</code> sends a frame with <code class="inline-code">senderId = Alice</code> and <code class="inline-code">receiverId = Bob</code>. Combined with Finding 3.1.2 (where <code class="inline-code">DELIVERY_ACK</code>, <code class="inline-code">READ_RECEIPT</code>, and <code class="inline-code">TYPING</code> do not require signatures), Mallory can directly impersonate Alice’s acknowledgements and typing events through the relay to Bob.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>The relay fails to enforce sender authenticity at the routing boundary.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>In <code class="inline-code">ClientSession.run()</code>, before calling <code class="inline-code">routeFrame</code>, assert <code class="inline-code">if (!this.clientId.equals(message.getSenderId())) { disconnect(); return; }</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.2.3</span>
+        <h4 class="finding-title">Prometheus Metrics Server Binds Wildcard (<code class="inline-code">0.0.0.0</code>) by Default</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/MetricsServer.java#L25" class="doc-link"><code class="inline-code">chat-server/src/main/java/com/e2eechat/server/MetricsServer.java:25</code></a></span> <span class="loc-tag">📄 [`chat-server/src/main/java/com/e2eechat/server/ChatServer.java:52</span> <span class="loc-tag">📄 59`](file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ChatServer.java#L52)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/MetricsServer.java#L25" class="doc-link"><code class="inline-code">MetricsServer.start()</code></a>, <code class="inline-code">HttpServer.create(new InetSocketAddress(port), 0)</code> binds to the wildcard interface (<code class="inline-code">0.0.0.0</code>), exposing <code class="inline-code">/metrics</code> over unauthenticated HTTP on all network interfaces.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>An operator runs <code class="inline-code">tetherless-relay</code> on a public VPS without a local firewall. Anyone on the internet connecting to <code class="inline-code">http://&lt;relay-ip&gt;:&lt;PORT+1&gt;/metrics</code> can read real-time operational telemetry: active client count, messages routed, buffer overflows, and rejection counters. This contradicts <a href="file:///c:/Users/aryan/Projects/tetherless/docs/deployment.md#L142-L144" class="doc-link"><code class="inline-code">docs/deployment.md:142-144</code></a>, which warns that metrics must not be accessible externally.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Unauthenticated information disclosure of operational and traffic patterns.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Bind explicitly to loopback: <code class="inline-code">new InetSocketAddress(InetAddress.getLoopbackAddress(), port)</code>, or expose a <code class="inline-code">METRICS_HOST</code> configuration property defaulting to <code class="inline-code">127.0.0.1</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Low">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.2.4</span>
+        <h4 class="finding-title">Hardcoded Default Keystore Password in ServerConfig</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-low">Low</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 [`chat-server/src/main/java/com/e2eechat/server/ServerConfig.java:25</span> <span class="loc-tag">📄 28</span> <span class="loc-tag">📄 63-65`](file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ServerConfig.java#L25)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p><a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ServerConfig.java#L25" class="doc-link"><code class="inline-code">ServerConfig.java</code></a> defines <code class="inline-code">static final String DEFAULT_KEYSTORE_PASSWORD = &quot;changeit&quot;;</code> as a literal, and does not synchronize with <code class="inline-code">TlsSupport.trustStorePassword()</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>If a developer sets <code class="inline-code">TETHERLESS_TRUSTSTORE_PASSWORD</code> in the environment as instructed by <a href="file:///c:/Users/aryan/Projects/tetherless/README.md#L75" class="doc-link"><code class="inline-code">README.md:75</code></a>, <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ServerConfig.java" class="doc-link"><code class="inline-code">ServerConfig</code></a> does not read that variable. It falls back to literal <code class="inline-code">&quot;changeit&quot;</code>, failing to start if the keystore was generated with that password.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Inconsistency between client/server configuration and reliance on hardcoded password literals.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Refactor <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ServerConfig.java" class="doc-link"><code class="inline-code">ServerConfig</code></a> to delegate fallback password retrieval to <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/TlsSupport.java#L87" class="doc-link"><code class="inline-code">TlsSupport.trustStorePassword()</code></a>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection-banner">
+    <h3>§3.3 Client Correctness & State</h3>
+    <p>Desktop and mobile state machines, ack processing, message deduplication, and parsing. — 3 findings identified in this domain.</p>
+  </div>
+
+  <div class="finding-card sev-High">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.3.1</span>
+        <h4 class="finding-title">Unguarded Message Status Transition Allows Status Regression from <code class="inline-code">READ</code> to <code class="inline-code">DELIVERED</code></h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-high">High</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/MessageRepository.java#L87-L100" class="doc-link"><code class="inline-code">chat-desktop/src/main/java/com/e2eechat/desktop/MessageRepository.java:87-100</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L279-L287" class="doc-link"><code class="inline-code">chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java:279-287</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/MessageRepository.java#L87" class="doc-link"><code class="inline-code">MessageRepository.updateStatus</code></a>:</p>
+<pre class="code-box"><code class="language-java">  PreparedStatement pstmt = conn.prepareStatement(
+          &quot;UPDATE messages SET status = ? WHERE message_id = ?&quot;);
+  pstmt.setString(1, status.name());
+  pstmt.setString(2, messageId);
+  pstmt.executeUpdate();</code></pre>
+<p>  There is no guard against backward state transitions in the delivery lifecycle.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <ol class="step-list">
+<li>Alice sends message <span class="math-expr"><em>M_1</em></span> to Bob.</li>
+<li>Bob reads the message; Bob’s client sends a <code class="inline-code">READ_RECEIPT</code>.</li>
+<li>Alice’s client receives the receipt, executing <code class="inline-code">markOutgoingRead</code>, which transitions <span class="math-expr"><em>M_1</em></span> from <code class="inline-code">SENT</code> to <code class="inline-code">READ</code>.</li>
+<li>A delayed or replayed <code class="inline-code">DELIVERY_ACK</code> for <span class="math-expr"><em>M_1</em></span> arrives later (due to network latency, reconnection, or relay retry).</li>
+<li><a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L284" class="doc-link"><code class="inline-code">ChatClient.onDelivered</code></a> executes <code class="inline-code">messageRepository.updateStatus(mId, Status.DELIVERED)</code>.</li>
+<li><span class="math-expr"><em>M_1</em></span>’s status in the local SQLite database is overwritten from <code class="inline-code">READ</code> back to <code class="inline-code">DELIVERED</code>. The UI downgrades the double checkmark back to a single/delivered checkmark.</li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Violates state machine monotonicity and corrupts message status presentation.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Guard the SQL update:</p>
+<p>  <code class="inline-code">UPDATE messages SET status = ? WHERE message_id = ? AND (status != &#x27;READ&#x27; OR ? = &#x27;READ&#x27;)</code> or enforce monotonic ordinal progression (<code class="inline-code">status_rank(new) &gt; status_rank(current)</code>).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-High">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.3.2</span>
+        <h4 class="finding-title">Null Payload on Control/Ack Frames Crashes Reader Loop &amp; Drops Network Connection</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-high">High</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L284-L286" class="doc-link"><code class="inline-code">chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java:284-286</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java#L303-L311" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java:303-311</code></a></span> <span class="loc-tag">📄 [`chat-desktop/src/main/java/com/e2eechat/desktop/ChatWindow.java:286</span> <span class="loc-tag">📄 313`](file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatWindow.java#L286)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p><a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/MessageCodec.java#L53" class="doc-link"><code class="inline-code">MessageCodec.decode</code></a> permits null payloads (<code class="inline-code">payload length == -1</code>). However, <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L284" class="doc-link"><code class="inline-code">ChatClient.onDelivered</code></a> directly invokes <code class="inline-code">new String(msg.getPayload(), StandardCharsets.UTF_8)</code> when handling <code class="inline-code">DELIVERY_ACK</code>. Similarly, <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatWindow.java#L286" class="doc-link"><code class="inline-code">ChatWindow.handleMessage</code></a> calls <code class="inline-code">new String(msg.getPayload(), StandardCharsets.UTF_8)</code> on <code class="inline-code">ERROR</code> and <code class="inline-code">DELIVERY_ACK</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <ol class="step-list">
+<li>A peer (or the relay) transmits a wire frame of type <code class="inline-code">DELIVERY_ACK</code> with <code class="inline-code">payload = null</code> (<code class="inline-code">-1</code> in wire encoding).</li>
+<li><a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L223" class="doc-link"><code class="inline-code">ChatClient.onMessageReceived</code></a> runs on the <code class="inline-code">Client-Reader</code> thread and calls <code class="inline-code">onDelivered()</code>.</li>
+<li><code class="inline-code">new String(null, ...)</code> throws a <code class="inline-code">NullPointerException</code>.</li>
+<li>The unhandled exception bubbles up to <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/ConnectionManager.java#L307" class="doc-link"><code class="inline-code">ConnectionManager.readerLoop</code></a>, which catches <code class="inline-code">Exception</code>, logs <code class="inline-code">Reader error: null</code>, and terminates by calling <code class="inline-code">own.close()</code>.</li>
+<li>The entire network connection is severed. A malicious peer can continuously disconnect a user by sending a single 20-byte null-payload frame.</li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Remotely triggerable denial of service and client connection drop.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Add null checks (<code class="inline-code">if (msg.getPayload() == null) return;</code>) in <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L284" class="doc-link"><code class="inline-code">ChatClient.onDelivered</code></a> and <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatWindow.java#L286" class="doc-link"><code class="inline-code">ChatWindow.handleMessage</code></a>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.3.3</span>
+        <h4 class="finding-title">Delimiter Injection in Quoted Reply Encoding</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L549-L579" class="doc-link"><code class="inline-code">chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java:549-579</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <code class="inline-code">Body.encode</code>:</p>
+<pre class="code-box"><code class="language-java">  return REPLY_MARKER + replyId + FIELD_SEP
+          + (replySender == null ? &quot;&quot; : replySender) + FIELD_SEP
+          + (replyPreview == null ? &quot;&quot; : replyPreview.replace(&#x27;\n&#x27;, &#x27; &#x27;)) + BODY_SEP
+          + text;</code></pre>
+<p>  <code class="inline-code">FIELD_SEP</code> (<code class="inline-code">\u001F</code>) and <code class="inline-code">BODY_SEP</code> (<code class="inline-code">\u001E</code>) are used as framing delimiters. <code class="inline-code">replyPreview.replace(&#x27;\n&#x27;, &#x27; &#x27;)</code> sanitizes newlines, but does <strong>not</strong> escape or strip <code class="inline-code">\u001F</code> or <code class="inline-code">\u001E</code> from <code class="inline-code">replyPreview</code>, <code class="inline-code">replySender</code>, or <code class="inline-code">replyId</code>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>A user sends a message containing <code class="inline-code">\u001E</code> or <code class="inline-code">\u001F</code>. When a contact quotes that message in a reply, <code class="inline-code">Body.encode</code> embeds the raw delimiter. On the receiving end, <code class="inline-code">Body.parse</code> splits on <code class="inline-code">FIELD_SEP</code> or matches <code class="inline-code">BODY_SEP</code> prematurely, corrupting the message text or displacing the reply preview into the message body.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Message formatting corruption and potential display text injection via quoted reply metadata.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Strip or escape <code class="inline-code">\u001E</code> and <code class="inline-code">\u001F</code> from all metadata fields in <code class="inline-code">Body.encode</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection-banner">
+    <h3>§3.4 Input Validation & Injection</h3>
+    <p>Wire codecs, character sets, file permissions, and boundary deserialization. — 1 findings identified in this domain.</p>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.4.1</span>
+        <h4 class="finding-title">Missing POSIX File Permissions on Private Key &amp; Peer Stores</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 [`core-shared/src/main/java/com/e2eechat/core/keys/JceKeyStoreManager.java:103</span> <span class="loc-tag">📄 113`](file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/keys/JceKeyStoreManager.java#L103)</span> <span class="loc-tag">📄 [`chat-desktop/src/main/java/com/e2eechat/desktop/PeerDirectory.java:150</span> <span class="loc-tag">📄 160`](file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/PeerDirectory.java#L150)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>When creating <code class="inline-code">identity.p12</code>, <code class="inline-code">peers.properties</code>, and <code class="inline-code">peer-verification.properties</code>, standard <code class="inline-code">FileOutputStream</code> is used without setting POSIX permissions (e.g. <code class="inline-code">0600</code>).</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>On multi-user Linux or macOS systems, files created with default umask (e.g., <code class="inline-code">0644</code>) are world-readable. Any local user account on the machine can read <code class="inline-code">identity.p12</code> to mount an offline dictionary attack against the passphrase, or read <code class="inline-code">peers.properties</code> to inspect the user&#x27;s entire contact list.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Local privilege boundary leakage on multi-user systems.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Use <code class="inline-code">File.setReadable(false, false); File.setReadable(true, true);</code> or POSIX file attribute permissions (<code class="inline-code">PosixFilePermissions.asFileAttribute(...)</code>) when creating sensitive files and parent configuration directories.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection-banner">
+    <h3>§3.5 Build, Supply Chain & Secrets</h3>
+    <p>Dependencies, CVE exposure, release build gates, and SpotBugs static analysis filters. — 3 findings identified in this domain.</p>
+  </div>
+
+  <div class="finding-card sev-High">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.5.1</span>
+        <h4 class="finding-title">Known Remote Code Execution Vulnerability in <code class="inline-code">sqlite-jdbc</code> (CVE-2023-32697)</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-high">High</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 [`gradle/libs.versions.toml:10</span> <span class="loc-tag">📄 24`](file:///c:/Users/aryan/Projects/tetherless/gradle/libs.versions.toml#L10)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>The build pins <code class="inline-code">sqlite-jdbc = &quot;3.41.2.1&quot;</code>. Version 3.41.2.1 is vulnerable to <strong>CVE-2023-32697</strong> (High severity), an arbitrary code execution vulnerability affecting <code class="inline-code">sqlite-jdbc</code> versions through 3.41.2.1. The flaw was resolved in version <strong>3.41.2.2</strong>.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>Any path where connection properties or database URLs can be influenced by configuration or untrusted input exposes the JVM to arbitrary code execution via crafted JDBC URLs.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Packaging a dependency known to be vulnerable to Remote Code Execution violates supply chain security standards.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Update <code class="inline-code">sqlite-jdbc</code> in <code class="inline-code">gradle/libs.versions.toml</code> to <code class="inline-code">3.45.1.0</code> or later (at minimum <code class="inline-code">3.41.2.2</code>).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.5.2</span>
+        <h4 class="finding-title">Known Vulnerabilities in Declared <code class="inline-code">logback-classic</code> Dependency</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 [`gradle/libs.versions.toml:4</span> <span class="loc-tag">📄 18`](file:///c:/Users/aryan/Projects/tetherless/gradle/libs.versions.toml#L4)</span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>The build pins <code class="inline-code">logback = &quot;1.5.0&quot;</code>. Logback 1.5.0 contains known security vulnerabilities (including CVE-2025-11226 and related configuration/deserialization issues) patched in subsequent 1.5.x and 1.6.x releases.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>Exploitation of logback configuration parsing or appender vulnerabilities in environments where logging configuration or environment variables are controlled by external entities.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Supply chain hygiene for core logging dependencies.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Update <code class="inline-code">logback</code> to <code class="inline-code">1.5.19</code> or higher.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.5.3</span>
+        <h4 class="finding-title">Blanket Global Suppressions in SpotBugs Filter Contradicting Stated Security Policy</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 [`config/spotbugs/exclude.xml:15-17</span> <span class="loc-tag">📄 23-25`](file:///c:/Users/aryan/Projects/tetherless/config/spotbugs/exclude.xml#L15-L17)</span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/docs/security.md#L337-L340" class="doc-link"><code class="inline-code">docs/security.md:337-340</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p><a href="file:///c:/Users/aryan/Projects/tetherless/docs/security.md#L337" class="doc-link"><code class="inline-code">docs/security.md §8</code></a> states:</p>
+<p>  &gt; <em>&quot;Three suppressions exist, each scoped to a single pattern or method and each carrying its reason in config/spotbugs/exclude.xml; there is no blanket exclusion, because on a security detector a pattern-wide suppression silently covers code nobody has looked at yet.&quot;</em></p>
+<p>  In reality, <a href="file:///c:/Users/aryan/Projects/tetherless/config/spotbugs/exclude.xml#L15" class="doc-link"><code class="inline-code">config/spotbugs/exclude.xml</code></a> contains blanket exclusions:</p>
+<pre class="code-box"><code class="language-xml">  &lt;Match&gt;
+      &lt;Bug pattern=&quot;OBJECT_DESERIALIZATION&quot; /&gt;
+  &lt;/Match&gt;
+  &lt;Match&gt;
+      &lt;Bug pattern=&quot;DM_DEFAULT_ENCODING&quot; /&gt;
+  &lt;/Match&gt;</code></pre>
+<p>  Neither match is scoped to a class or method.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>A developer introduces a call to <code class="inline-code">ObjectInputStream.readObject()</code> on an untrusted stream anywhere in the codebase. SpotBugs fails to flag it because <code class="inline-code">OBJECT_DESERIALIZATION</code> is globally suppressed.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Discrepancy between published security guarantees and static analysis enforcement.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Remove the blanket <code class="inline-code">&lt;Bug pattern=&quot;OBJECT_DESERIALIZATION&quot; /&gt;</code> suppression. If a specific class genuinely needs an exclusion, scope it explicitly by <code class="inline-code">&lt;Class name=&quot;...&quot; /&gt;</code> and <code class="inline-code">&lt;Method name=&quot;...&quot; /&gt;</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection-banner">
+    <h3>§3.6 Tests & Verification</h3>
+    <p>Test vector completeness, adversarial coverage, stress tests, and lifecycle assertions. — 2 findings identified in this domain.</p>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.6.1</span>
+        <h4 class="finding-title">Test Suite Fails to Exercise Tampering on Control &amp; Ack Frames</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/test/java/com/e2eechat/core/session/AdversarialRelayTest.java#L174-L186" class="doc-link"><code class="inline-code">core-shared/src/test/java/com/e2eechat/core/session/AdversarialRelayTest.java:174-186</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p>In <code class="inline-code">AdversarialRelayTest.strippingTheSignatureDropsTheMessage</code>:</p>
+<pre class="code-box"><code class="language-java">  relay.setTamper(message -&gt; message.getType() == MessageType.TEXT_MESSAGE
+          ? MaliciousRelay.stripSignature(message)
+          : message);</code></pre>
+<p>  The test only verifies stripping signatures on <code class="inline-code">TEXT_MESSAGE</code>. It completely omits testing whether unsigned <code class="inline-code">DELIVERY_ACK</code>, <code class="inline-code">READ_RECEIPT</code>, or <code class="inline-code">TYPING</code> frames are dropped.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>Because tests only tested <code class="inline-code">TEXT_MESSAGE</code>, the failure of <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/SignatureVerifier.java#L26" class="doc-link"><code class="inline-code">SignatureVerifier.java:26</code></a> to enforce signatures on control frames went unnoticed and passed all CI checks.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>False sense of test coverage on adversarial relay capabilities.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Extend <code class="inline-code">AdversarialRelayTest</code> to assert that stripping signatures on <code class="inline-code">DELIVERY_ACK</code>, <code class="inline-code">READ_RECEIPT</code>, <code class="inline-code">TYPING</code>, and <code class="inline-code">KEY_EXCHANGE_REJECT</code> causes them to be dropped.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding-card sev-Low">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.6.2</span>
+        <h4 class="finding-title"><code class="inline-code">IvReuseTest</code> Iteration Count Is Orders of Magnitude Below Key Budget</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-low">Low</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/test/java/com/e2eechat/core/session/IvReuseTest.java#L43-L58" class="doc-link"><code class="inline-code">core-shared/src/test/java/com/e2eechat/core/session/IvReuseTest.java:43-58</code></a></span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/Session.java#L88" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/session/Session.java:88</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <p><a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/test/java/com/e2eechat/core/session/IvReuseTest.java#L43" class="doc-link"><code class="inline-code">IvReuseTest.java</code></a> runs only 20 iterations across directions and 200 iterations for a single sender. While mathematically the counter increments deterministically, it does not test behavior near <code class="inline-code">MAX_SENDS_PER_KEY</code> (100,000) or verify IV generation across multiple session renewal cycles in a single test.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>A regression in counter reset or direction assignment across multiple consecutive key renewals could go undetected.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Inadequate stress testing of the primary AES-GCM invariant.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Add a parameterized test simulating renewal transitions across several consecutive keys, asserting distinct nonces across the entire lifecycle.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection-banner">
+    <h3>§3.7 Architecture, Maintainability & Docs</h3>
+    <p>Documentation fidelity, specification drift, and code maintainability. — 1 findings identified in this domain.</p>
+  </div>
+
+  <div class="finding-card sev-Medium">
+    <div class="finding-top">
+      <div class="finding-id-title">
+        <span class="finding-id-badge">Finding 3.7.1</span>
+        <h4 class="finding-title">Discrepancies Between Documentation Guarantees and Code Implementation</h4>
+      </div>
+      <div class="finding-badges">
+        <span class="badge badge-medium">Medium</span>
+        <span class="badge badge-conf">Confirmed</span>
+      </div>
+    </div>
+    <div class="finding-location-bar">
+      <strong>Location:</strong> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/docs/deployment.md#L64-L65" class="doc-link"><code class="inline-code">docs/deployment.md:64-65</code></a></span> <span class="loc-tag">📄 [`docs/security.md:184</span> <span class="loc-tag">📄 337`](file:///c:/Users/aryan/Projects/tetherless/docs/security.md#L184)</span> <span class="loc-tag">📄 <a href="file:///c:/Users/aryan/Projects/tetherless/docs/protocol.md#L91-L106" class="doc-link"><code class="inline-code">docs/protocol.md:91-106</code></a></span>
+    </div>
+    <div class="finding-body">
+      <div class="detail-block">
+        <div class="detail-label label-wrong">What is Wrong (Defect Mechanics)</div>
+        <div class="box-wrong">
+          <ol class="step-list">
+<li><a href="file:///c:/Users/aryan/Projects/tetherless/docs/deployment.md#L64" class="doc-link"><code class="inline-code">docs/deployment.md:64</code></a> claims: <em>&quot;A certificate without a matching SAN fails the handshake regardless of pinning.&quot;</em> In reality, hostname verification is not enabled on the client socket (Finding 3.1.4).</li>
+<li><a href="file:///c:/Users/aryan/Projects/tetherless/docs/security.md#L184" class="doc-link"><code class="inline-code">docs/security.md:184</code></a> and <a href="file:///c:/Users/aryan/Projects/tetherless/docs/protocol.md#L91" class="doc-link"><code class="inline-code">docs/protocol.md §5</code></a> state that typing notifications and read receipts are signed. In reality, unsigned versions are accepted as valid by <code class="inline-code">SignatureVerifier</code> (Finding 3.1.2).</li>
+<li><a href="file:///c:/Users/aryan/Projects/tetherless/docs/security.md#L337" class="doc-link"><code class="inline-code">docs/security.md:337</code></a> claims every SpotBugs suppression is scoped to a single pattern or method without blanket exclusions. In reality, blanket exclusions exist (Finding 3.5.3).</li>
+</ol>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-scenario">Concrete Failure Scenario</div>
+        <div class="box-scenario">
+          <p>Security auditors and operators relying on documentation make incorrect security assumptions regarding MITM protection, signature integrity, and static analysis rigor.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-impact">Why it Matters (Cryptographic &amp; Systemic Impact)</div>
+        <div class="box-impact">
+          <p>Over-claiming in security documentation misleads users and auditors.</p>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label label-fix">Remediation Guidance (How to Fix)</div>
+        <div class="box-fix">
+          <p>Align documentation with code or implement the missing checks.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="page-break"></div>
+<div class="section-container">
+  <div class="section-header">
+    <h2>3. Confirmed Strengths</h2>
+    <span class="section-tag">7 Independently Verified Security Controls</span>
+  </div>
+  <p style="margin-bottom: 10px; color: #475569; font-size: 8.2pt;">The following architectural mechanisms and cryptographic controls were verified in the source code as effective implementations conforming to secure design principles:</p>
+  <div class="card-grid">
+
+    <div class="item-card strength-card">
+      <div class="item-title">
+        <span class="icon-badge icon-strength">VERIFIED #1</span>
+        No Java Serialization on the Wire:
+      </div>
+      <div class="item-body">
+        <p>   <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/MessageCodec.java" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/protocol/MessageCodec.java</code></a> implements a hand-rolled binary codec with strict length checks before any allocation (<code class="inline-code">readByteArray</code> enforces bounds before array creation). No wire models implement <code class="inline-code">java.io.Serializable</code>.</p>
+      </div>
+    </div>
+
+    <div class="item-card strength-card">
+      <div class="item-title">
+        <span class="icon-badge icon-strength">VERIFIED #2</span>
+        MODP Group 14 Subgroup Validation:
+      </div>
+      <div class="item-body">
+        <p>   <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/crypto/DHUtils.java#L62-L72" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/crypto/DHUtils.java:62-72</code></a> strictly enforces bounds <span class="math-expr"><em>1 &lt; y &lt; p-1</em></span> and tests <span class="math-expr"><em>y^q \pmod p == 1</em></span>, preventing small-subgroup attacks.</p>
+      </div>
+    </div>
+
+    <div class="item-card strength-card">
+      <div class="item-title">
+        <span class="icon-badge icon-strength">VERIFIED #3</span>
+        Leading Zero Normalisation in Diffie-Hellman Secret Derivation:
+      </div>
+      <div class="item-body">
+        <p>   <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/crypto/DHUtils.java#L80-L89" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/crypto/DHUtils.java:80-89</code></a> correctly left-pads the raw DH secret to 256 bytes, preventing intermittent 1-in-256 handshake derivation failures between JDK and Conscrypt providers.</p>
+      </div>
+    </div>
+
+    <div class="item-card strength-card">
+      <div class="item-title">
+        <span class="icon-badge icon-strength">VERIFIED #4</span>
+        Frozen Protocol Vectors &amp; Cross-Platform Conformance:
+      </div>
+      <div class="item-body">
+        <p>   <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/ProtocolVectors.java" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/protocol/ProtocolVectors.java</code></a> and <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/ProtocolConformance.java" class="doc-link"><code class="inline-code">ProtocolConformance.java</code></a> verify 17 frozen protocol test vectors and RFC 5869 HKDF vectors, preventing silent protocol drift.</p>
+      </div>
+    </div>
+
+    <div class="item-card strength-card">
+      <div class="item-title">
+        <span class="icon-badge icon-strength">VERIFIED #5</span>
+        Release Build Certificate Gating:
+      </div>
+      <div class="item-body">
+        <p>   <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/TlsSupport.java#L123-L129" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/network/TlsSupport.java:123-129</code></a> and <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ServerConfig.java#L149-L156" class="doc-link"><code class="inline-code">chat-server/src/main/java/com/e2eechat/server/ServerConfig.java:149-156</code></a> actively inspect <code class="inline-code">BuildInfo.isRelease()</code>. Packaged release builds hard-fail if unconfigured rather than falling back to the development keystore.</p>
+      </div>
+    </div>
+
+    <div class="item-card strength-card">
+      <div class="item-title">
+        <span class="icon-badge icon-strength">VERIFIED #6</span>
+        In-Process Identity Key Generation:
+      </div>
+      <div class="item-body">
+        <p>   <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/keys/JceKeyStoreManager.java#L88-L107" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/keys/JceKeyStoreManager.java:88-107</code></a> generates RSA identity keys and self-signed certificates entirely in-process using <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/keys/SelfSignedCertificate.java" class="doc-link"><code class="inline-code">SelfSignedCertificate.java</code></a>, eliminating command-line argument exposure via <code class="inline-code">keytool</code>.</p>
+      </div>
+    </div>
+
+    <div class="item-card strength-card">
+      <div class="item-title">
+        <span class="icon-badge icon-strength">VERIFIED #7</span>
+        Display Name Sanitization:
+      </div>
+      <div class="item-body">
+        <p>   <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/HelloPayload.java#L130-L145" class="doc-link"><code class="inline-code">core-shared/src/main/java/com/e2eechat/core/protocol/HelloPayload.java:130-145</code></a> strips ASCII control characters, Unicode bidirectional overrides (<code class="inline-code">U+202A..U+202E</code>), and isolates (<code class="inline-code">U+2066..U+2069</code>) before rendering.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section-container" style="margin-top: 16px;">
+  <div class="section-header">
+    <h2>4. Documented Limitations Confirmed Present</h2>
+    <span class="section-tag">6 Verified Boundary Non-Goals</span>
+  </div>
+  <p style="margin-bottom: 10px; color: #475569; font-size: 8.2pt;">The following documented limitations from <code class="inline-code">docs/security.md §5</code> were independently verified as present in the implementation:</p>
+  <div class="card-grid">
+
+    <div class="item-card limit-card">
+      <div class="item-title">
+        <span class="icon-badge icon-limit">LIMITATION #1</span>
+        No Forward Secrecy / No Ratchet:
+      </div>
+      <div class="item-body">
+        <p>   Confirmed in <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SecureChat.java#L132-L155" class="doc-link"><code class="inline-code">SecureChat.java:132-155</code></a> and <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/Session.java#L88" class="doc-link"><code class="inline-code">Session.java:88</code></a>. A single DH exchange generates a key that persists for up to 100,000 messages. There is no Double Ratchet or per-message key rotation.</p>
+      </div>
+    </div>
+
+    <div class="item-card limit-card">
+      <div class="item-title">
+        <span class="icon-badge icon-limit">LIMITATION #2</span>
+        Absence of Metadata Privacy from the Relay:
+      </div>
+      <div class="item-body">
+        <p>   Confirmed in <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ClientSession.java#L272-L296" class="doc-link"><code class="inline-code">chat-server/src/main/java/com/e2eechat/server/ClientSession.java:272-296</code></a>. The relay observes full communication metadata (sender, receiver, frame length, and timestamps).</p>
+      </div>
+    </div>
+
+    <div class="item-card limit-card">
+      <div class="item-title">
+        <span class="icon-badge icon-limit">LIMITATION #3</span>
+        Startup GitHub Update Check:
+      </div>
+      <div class="item-body">
+        <p>   Confirmed in <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/UpdateChecker.java#L108-L144" class="doc-link"><code class="inline-code">chat-desktop/src/main/java/com/e2eechat/desktop/UpdateChecker.java:108-144</code></a>. Performs an outbound HTTPS request to GitHub&#x27;s release API on startup unless disabled via <code class="inline-code">updates=false</code>.</p>
+      </div>
+    </div>
+
+    <div class="item-card limit-card">
+      <div class="item-title">
+        <span class="icon-badge icon-limit">LIMITATION #4</span>
+        Partial At-Rest Encryption on Desktop:
+      </div>
+      <div class="item-body">
+        <p>   Confirmed in <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/MessageRepository.java#L55-L84" class="doc-link"><code class="inline-code">chat-desktop/src/main/java/com/e2eechat/desktop/MessageRepository.java:55-84</code></a>. Only message text and reply preview columns are AES-GCM encrypted; <code class="inline-code">sender</code>, <code class="inline-code">receiver</code>, <code class="inline-code">timestamp</code>, and message counts remain plaintext in SQLite.</p>
+      </div>
+    </div>
+
+    <div class="item-card limit-card">
+      <div class="item-title">
+        <span class="icon-badge icon-limit">LIMITATION #5</span>
+        No Session Expiry / Time-to-Live:
+      </div>
+      <div class="item-body">
+        <p>   Confirmed in <a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/Session.java#L11" class="doc-link"><code class="inline-code">Session.java:11</code></a>. <code class="inline-code">Session.State.EXPIRED</code> is never assigned.</p>
+      </div>
+    </div>
+
+    <div class="item-card limit-card">
+      <div class="item-title">
+        <span class="icon-badge icon-limit">LIMITATION #6</span>
+        Single Centralized Relay Architecture:
+      </div>
+      <div class="item-body">
+        <p>   Confirmed across <a href="file:///c:/Users/aryan/Projects/tetherless/chat-server" class="doc-link"><code class="inline-code">chat-server</code></a>. No peer-to-peer or federated relay capabilities are implemented.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="page-break"></div>
+<div class="section-container">
+  <div class="section-header">
+    <h2>5. Top 5 Priorities to Fix First</h2>
+    <span class="section-tag">Immediate Engineering Action Plan</span>
+  </div>
+  <p style="margin-bottom: 10px; color: #475569; font-size: 8.2pt;">To achieve baseline cryptographic integrity and prevent active relay compromise, the following 5 remediation items must be implemented prior to release:</p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 7%; text-align: center;">Rank</th>
+        <th style="width: 14%;">Finding ID</th>
+        <th style="width: 11%; text-align: center;">Severity</th>
+        <th style="width: 28%;">File Reference</th>
+        <th>Action Required</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr>
+        <td style="text-align: center;"><span class="prio-rank prio-rank-1">1</span></td>
+        <td><strong>Finding 3.1.2</strong></td>
+        <td style="text-align: center;"><span class="badge badge-critical">Critical</span></td>
+        <td><a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/protocol/SignatureVerifier.java#L20-L27" class="doc-link"><code class="inline-code">SignatureVerifier.java:20-27</code></a></td>
+        <td><strong>Enforce signatures on all control frame types (<code class="inline-code">DELIVERY_ACK</code>, <code class="inline-code">READ_RECEIPT</code>, <code class="inline-code">TYPING</code>, <code class="inline-code">KEY_EXCHANGE_REJECT</code>).</strong></td>
+      </tr>
+
+      <tr>
+        <td style="text-align: center;"><span class="prio-rank prio-rank-2">2</span></td>
+        <td><strong>Finding 3.1.1</strong></td>
+        <td style="text-align: center;"><span class="badge badge-critical">Critical</span></td>
+        <td><a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/session/SessionManager.java#L42-L66" class="doc-link"><code class="inline-code">SessionManager.java:42-66</code></a></td>
+        <td><strong>Assert <code class="inline-code">localClientId.equals(msg.getReceiverId())</code> on all incoming frames to prevent cross-session misrouting.</strong></td>
+      </tr>
+
+      <tr>
+        <td style="text-align: center;"><span class="prio-rank prio-rank-3">3</span></td>
+        <td><strong>Finding 3.2.1</strong></td>
+        <td style="text-align: center;"><span class="badge badge-high">High</span></td>
+        <td><a href="file:///c:/Users/aryan/Projects/tetherless/chat-server/src/main/java/com/e2eechat/server/ClientSession.java#L202-L221" class="doc-link"><code class="inline-code">ClientSession.java:202-221</code></a></td>
+        <td><strong>Authenticate registration <code class="inline-code">HELLO</code> with a cryptographic signature/proof-of-possession to prevent trivial identity squatting.</strong></td>
+      </tr>
+
+      <tr>
+        <td style="text-align: center;"><span class="prio-rank prio-rank-4">4</span></td>
+        <td><strong>Finding 3.1.4</strong></td>
+        <td style="text-align: center;"><span class="badge badge-high">High</span></td>
+        <td><a href="file:///c:/Users/aryan/Projects/tetherless/core-shared/src/main/java/com/e2eechat/core/network/TlsSupport.java#L235-L241" class="doc-link"><code class="inline-code">TlsSupport.java:235-241</code></a></td>
+        <td><strong>Enable TLS endpoint identification (<code class="inline-code">params.setEndpointIdentificationAlgorithm(&quot;HTTPS&quot;)</code>) on all raw <code class="inline-code">SSLSocket</code> instances.</strong></td>
+      </tr>
+
+      <tr>
+        <td style="text-align: center;"><span class="prio-rank prio-rank-5">5</span></td>
+        <td><strong>Finding 3.3.1 & 3.3.2</strong></td>
+        <td style="text-align: center;"><span class="badge badge-high">High</span></td>
+        <td><a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/MessageRepository.java#L92-L96" class="doc-link"><code class="inline-code">MessageRepository.java:92-96</code></a>, <a href="file:///c:/Users/aryan/Projects/tetherless/chat-desktop/src/main/java/com/e2eechat/desktop/ChatClient.java#L284-L286" class="doc-link"><code class="inline-code">ChatClient.java:284-286</code></a></td>
+        <td><strong>Guard status updates against regression from <code class="inline-code">READ</code> to <code class="inline-code">DELIVERED</code>, and null-check payloads to prevent connection drops.</strong></td>
+      </tr>
+
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>
