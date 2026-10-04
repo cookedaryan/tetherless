@@ -64,3 +64,8 @@ gradlew.bat     text eol=crlf
 *.otf           binary
 *.woff          binary
 *.woff2         binary
+
+# Office and PDF documents: byte-exact, and the pre-commit hook must not mistake them for UTF-16 text.
+*.docx          binary
+*.pptx          binary
+*.pdf           binary
