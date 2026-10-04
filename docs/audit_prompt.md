@@ -64,7 +64,6 @@ trust is TOFU with a safety-number check.
 | `core-shared` | Protocol models, wire codec, AES/DH/RSA primitives, session + transport. The single shared implementation. | Java 8 |
 | `chat-server` | The relay. Routes by receiver id; stores nothing it can read. | Java 8 |
 | `chat-desktop` | Swing + SQLite desktop client (the functional one). | Java 8 |
-| `chat-desktop-compose` | Compose Multiplatform client (UI preview, not yet networked). | Kotlin |
 | `chat-mobile` | Android client, in progress — **out of audit scope**. | Java/Android |
 
 **Key files to anchor the crypto/protocol audit:**

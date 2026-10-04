@@ -17,7 +17,6 @@ include 'chat-server'
 def optional = [
         'chat-desktop': { true },
         'desktop-engine': { true },
-        'chat-desktop-compose': { true },
         'chat-mobile' : {
             System.getenv('ANDROID_HOME') || System.getenv('ANDROID_SDK_ROOT') ||
                     file('local.properties').exists() || settings.hasProperty('includeMobile')

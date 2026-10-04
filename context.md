@@ -14,7 +14,6 @@ decrypted on the receiving one; the relay in the middle routes ciphertext and is
 - `chat-desktop-electron`: Electron + React front end over that engine. npm only; Gradle never
   builds it.
 - `chat-mobile`: Android + Room client.
-- `chat-desktop-compose`: a Compose Multiplatform scaffold. Abandoned in favour of Electron.
 
 ## Key documents
 
