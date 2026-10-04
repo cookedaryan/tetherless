@@ -1,0 +1,1131 @@
+import os
+import subprocess
+import sys
+
+HTML_CONTENT = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tetherless: 5-Person Presentation Speech Deck & Rehearsal Handbook</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 14mm 12mm;
+    @bottom-right {
+      content: counter(page);
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    background-color: #ffffff;
+    line-height: 1.45;
+    font-size: 9.5pt;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4 {
+    color: #0f172a;
+    font-weight: 700;
+    margin-top: 0;
+  }
+
+  .header-card {
+    background: linear-gradient(135deg, #0a0e17 0%, #1e293b 100%);
+    color: #ffffff;
+    padding: 22px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    border: 1px solid #334155;
+  }
+
+  .header-card h1 {
+    color: #38bdf8;
+    font-size: 21pt;
+    margin-bottom: 4px;
+    letter-spacing: -0.5px;
+  }
+
+  .header-card .subtitle {
+    color: #94a3b8;
+    font-size: 11pt;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .meta-grid {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .meta-badge {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 4px 9px;
+    border-radius: 4px;
+    font-size: 8pt;
+    color: #e2e8f0;
+    font-weight: 500;
+  }
+
+  .meta-badge strong {
+    color: #38bdf8;
+  }
+
+  .section-title {
+    font-size: 13pt;
+    color: #0f172a;
+    border-bottom: 2px solid #0284c7;
+    padding-bottom: 4px;
+    margin-top: 20px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .section-title span {
+    font-size: 8.5pt;
+    color: #64748b;
+    font-weight: 400;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+    font-size: 8.5pt;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  th {
+    background-color: #f1f5f9;
+    color: #334155;
+    text-align: left;
+    padding: 7px 9px;
+    border: 1px solid #cbd5e1;
+    font-weight: 600;
+  }
+
+  td {
+    padding: 6px 9px;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+
+  .spk-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .spk-1 { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+  .spk-2 { background-color: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
+  .spk-3 { background-color: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+  .spk-4 { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .spk-5 { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+
+  .slide-card {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    background-color: #ffffff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    page-break-inside: avoid;
+    break-inside: avoid;
+    overflow: hidden;
+  }
+
+  .slide-header {
+    background-color: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 7px 11px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .slide-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .slide-num {
+    background-color: #0f172a;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 8pt;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+
+  .slide-title {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+  }
+
+  .slide-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .time-badge {
+    font-size: 7.5pt;
+    background: #f1f5f9;
+    color: #475569;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid #cbd5e1;
+    font-weight: 600;
+  }
+
+  .slide-body {
+    padding: 9px 13px;
+  }
+
+  .visual-cue {
+    background-color: #f8fafc;
+    border-left: 3px solid #64748b;
+    padding: 5px 9px;
+    margin-bottom: 7px;
+    font-size: 8pt;
+    color: #475569;
+  }
+
+  .visual-cue strong {
+    color: #1e293b;
+  }
+
+  .speech-script {
+    background-color: #fdfdfd;
+    border-left: 3px solid #0284c7;
+    padding: 7px 11px;
+    margin: 5px 0;
+    font-size: 9pt;
+    color: #0f172a;
+    line-height: 1.48;
+  }
+
+  .speech-script strong {
+    color: #0284c7;
+  }
+
+  .speech-script em {
+    color: #475569;
+    font-style: italic;
+  }
+
+  .handoff-box {
+    background-color: #eff6ff;
+    border: 1px dashed #60a5fa;
+    border-radius: 4px;
+    padding: 5px 9px;
+    margin-top: 7px;
+    font-size: 8pt;
+    color: #1e40af;
+  }
+
+  .handoff-box strong {
+    color: #1d4ed8;
+  }
+
+  .stage-dir {
+    font-size: 7.5pt;
+    color: #64748b;
+    font-style: italic;
+    margin-top: 4px;
+  }
+
+  .timeline-bar {
+    display: flex;
+    height: 22px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 10px 0 16px 0;
+    font-size: 7pt;
+    font-weight: 700;
+    color: white;
+    text-align: center;
+    line-height: 22px;
+  }
+
+  .timeline-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .qa-table th { background-color: #0f172a; color: #ffffff; }
+  .qa-table td { font-size: 8pt; line-height: 1.4; }
+
+  .checklist {
+    list-style: none;
+    padding-left: 0;
+    margin-top: 8px;
+    font-size: 8.5pt;
+  }
+
+  .checklist li {
+    padding: 4px 0;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .checklist strong {
+    color: #0f172a;
+  }
+
+  .page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER / HEADER -->
+<div class="header-card">
+  <h1>TETHERLESS: 5-PERSON SPEECH DECK</h1>
+  <div class="subtitle">Decentralized End-to-End Encrypted Messaging Architecture • Comprehensive Technical Presentation</div>
+  <div class="meta-grid">
+    <div class="meta-badge"><strong>Format:</strong> 25 Widescreen Slides (6 Parts)</div>
+    <div class="meta-badge"><strong>Target Duration:</strong> 20 Minutes 30 Seconds + Q&A</div>
+    <div class="meta-badge"><strong>System Status:</strong> Pre-1.0 Verified</div>
+    <div class="meta-badge"><strong>Slide Deck:</strong> docs/tetherless_presentation.pptx</div>
+  </div>
+</div>
+
+<!-- SECTION 1: ROSTER -->
+<div class="section-title">
+  1. Team Roster & Slide Distribution Matrix
+  <span>Executive Bookend Model</span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 14%;">Speaker</th>
+      <th style="width: 25%;">Role / Technical Persona</th>
+      <th style="width: 18%;">Assigned Slides</th>
+      <th>Core Technical Topics</th>
+      <th style="width: 12%;">Time Target</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="spk-badge spk-1">Speaker 1</span></td>
+      <td><strong>Systems Architect & Team Lead (Emcee)</strong></td>
+      <td>Slides 1–5, 24–25 (7 slides)</td>
+      <td>Vision, Hostile Relay Axiom, Codebase Topology, Post-1.0 Horizons, Conclusion</td>
+      <td>4:30 min</td>
+    </tr>
+    <tr>
+      <td><span class="spk-badge spk-2">Speaker 2</span></td>
+      <td><strong>Cryptography & Wire Protocol Engineer</strong></td>
+      <td>Slides 6–9 (4 slides)</td>
+      <td>AES-256-GCM, DH-2048 (RFC 3526), Deterministic Nonces, Binary Codec vs RCE</td>
+      <td>4:00 min</td>
+    </tr>
+    <tr>
+      <td><span class="spk-badge spk-3">Speaker 3</span></td>
+      <td><strong>Security Analyst & Threat Modeling Lead</strong></td>
+      <td>Slides 10–13 (4 slides)</td>
+      <td>Threat Matrix T1–T6, TOFU Identity Binding, Safety Numbers, Honest Limitations</td>
+      <td>3:45 min</td>
+    </tr>
+    <tr>
+      <td><span class="spk-badge spk-4">Speaker 4</span></td>
+      <td><strong>Distributed Systems & Relay Lead</strong></td>
+      <td>Slides 14–18 (5 slides)</td>
+      <td>Dumb Relay Queues, CAS Reconnect, -PreleaseBuild Hardening, Desktop Swing & WAL</td>
+      <td>4:15 min</td>
+    </tr>
+    <tr>
+      <td><span class="spk-badge spk-5">Speaker 5</span></td>
+      <td><strong>Mobile Platforms & QA / Release Lead</strong></td>
+      <td>Slides 19–23 (5 slides)</td>
+      <td>Android Room + SQLCipher + KeyStore, Update Banner, 13 Adversarial Tests, MVP Tickets</td>
+      <td>4:00 min</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- TIMELINE -->
+<div class="timeline-bar">
+  <div class="timeline-seg" style="width: 22%; background-color: #0284c7;">Spk 1: Intro (4:30)</div>
+  <div class="timeline-seg" style="width: 20%; background-color: #6366f1;">Spk 2: Crypto (4:00)</div>
+  <div class="timeline-seg" style="width: 18%; background-color: #e11d48;">Spk 3: Threats (3:45)</div>
+  <div class="timeline-seg" style="width: 20%; background-color: #d97706;">Spk 4: Systems (4:15)</div>
+  <div class="timeline-seg" style="width: 20%; background-color: #059669;">Spk 5: Mobile & QA (4:00)</div>
+</div>
+
+<!-- SECTION 2: SLIDE BY SLIDE -->
+<div class="section-title">
+  2. Slide-by-Slide Delivery Scripts, Visual Cues & Verbal Handoffs
+  <span>Slides 1 through 25</span>
+</div>
+
+<!-- PART 1 -->
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 1</span>
+      <h3 class="slide-title">Title Slide: TETHERLESS E2EE Messaging Architecture</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-1">Speaker 1</span>
+      <span class="time-badge">0:45 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Dark navy title slide with cyan glowing typography, status badge "Pre-1.0 Verified • 6-Part Presentation • 25 Slides".</div>
+    <div class="speech-script">
+      "Good morning, everyone. I'm <strong>[Speaker 1 Name]</strong>, Lead Architect for project <strong>Tetherless</strong>, and together with my engineering team, we are excited to present our architecture and technical specification for decentralized, end-to-end encrypted messaging.<br><br>
+      In today's communication ecosystem, almost every so-called 'secure' platform demands that you trust their intermediate infrastructure. At Tetherless, we start from an entirely different foundational axiom: <strong>the relay server is assumed actively hostile</strong>.<br><br>
+      Today, we will walk you through how we designed, implemented, and mathematically verified a zero-knowledge communication stack that guarantees confidentiality, integrity, and authenticity across desktop and mobile platforms."
+    </div>
+    <div class="stage-dir">Stage Direction: Stand center-stage. Speak with calm authority, establishing an engineering-first standard.</div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 2</span>
+      <h3 class="slide-title">Agenda & Presentation Roadmap</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-1">Speaker 1</span>
+      <span class="time-badge">0:45 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> 6-card grid outlining Parts 1 through 6 from Architecture down to Verification and Roadmap.</div>
+    <div class="speech-script">
+      "Our presentation is organized into six structured technical deep dives.<br><br>
+      I will begin with our <strong>Executive Overview and Multi-Module Architecture</strong>. 
+      Next, <strong>[Speaker 2 Name]</strong> will take the floor to detail our <strong>Cryptographic Engine and Custom Binary Wire Protocol</strong>. 
+      <strong>[Speaker 3 Name]</strong> will step through our <strong>Formal Threat Model and Identity Architecture</strong>, proving how we defeat active adversaries. 
+      <strong>[Speaker 4 Name]</strong> will explore our <strong>Non-Blocking Relay Server and Desktop Client Platform</strong>.
+      And <strong>[Speaker 5 Name]</strong> will present our <strong>Android Implementation, our 13-scenario Adversarial Test Suite, and our immediate MVP Release Roadmap</strong>.<br><br>
+      Finally, I'll return to outline our post-v1.0 horizons and open the floor for your questions. Let's dive into Part 1."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 3</span>
+      <h3 class="slide-title">Section Divider: Executive Overview & System Architecture</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-1">Speaker 1</span>
+      <span class="time-badge">0:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Large glowing section card for Part 1 with 3 core bullets.</div>
+    <div class="speech-script">
+      "Part 1 lays down our core philosophy and code topology. Before writing a single line of cryptography, we had to redefine the fundamental trust relationship between clients and the network."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 4</span>
+      <h3 class="slide-title">The Core Premise: The Relay is Assumed Hostile</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-1">Speaker 1</span>
+      <span class="time-badge">1:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Dual cards: Left card (Zero-Trust Relay Principle) in Cyan; Right card (Guarantees & Non-Goals) in Teal/Amber.</div>
+    <div class="speech-script">
+      "Here is our core premise: <strong>We do not treat the relay as a trusted partner.</strong> In our threat model, the relay server is operated by an active adversary. It is assumed compromised, actively snooping, tampering with packets, or monitored by a hostile third party.<br><br>
+      To survive this environment, Tetherless enforces four strict rules:<br>
+      First, <strong>zero plaintext knowledge</strong>. The relay never possesses private keys, never performs decryption, and handles message payloads strictly as opaque byte arrays.<br>
+      Second, <strong>context hiding</strong>. Reply quotes, parent message IDs, and conversation threading are packaged <em>inside</em> the encrypted envelope—the relay sees only ciphertext.<br>
+      Third, <strong>dual-layer protection</strong>. We apply pinned TLS 1.3 at the transport layer for link integrity and ISP traffic-masking, but we <em>never</em> rely on TLS as a substitute for application-layer E2EE.<br><br>
+      On the right card, notice our engineering honesty: We guarantee message confidentiality, tamper evidence, and replay defense. But we explicitly document our non-goals for v1.0: the relay necessarily observes connection metadata—who connects, when, and packet byte counts. We believe security claims are meaningless without explicitly documenting their boundaries."
+    </div>
+    <div class="stage-dir">Stage Direction: Gesture toward the right-hand card when emphasizing honest limitations.</div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 5</span>
+      <h3 class="slide-title">Multi-Module Codebase Architecture</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-1">Speaker 1</span>
+      <span class="time-badge">1:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> 4 horizontal cards: core-shared (Cyan), chat-server (Rose), chat-desktop (Teal), chat-mobile (Green).</div>
+    <div class="speech-script">
+      "To enforce these boundaries physically in the build system, Tetherless is structured into four decoupled Gradle modules.<br><br>
+      At the center is <strong>core-shared</strong>. This is a platform-neutral library containing our cryptographic primitives, wire codec, message models, and handshake state machine. Crucially, it targets Java 8 bytecode compatibility so it runs identically on both modern desktop JVMs and Android devices, preventing cryptographic logic drift.<br><br>
+      Below that is <strong>chat-server</strong>. This is a deliberately dumb, high-throughput forwarder. It does not import database libraries, holds no client keys, and exists solely to route encrypted frames via non-blocking queues.<br><br>
+      On the client tier, <strong>chat-desktop</strong> is our Java Swing desktop application featuring SQLite in WAL mode, PBKDF2 at-rest encryption, and standalone Windows .msi packaging.<br><br>
+      And finally, <strong>chat-mobile</strong> delivers our native Android client with Room, SQLCipher whole-file encryption, and hardware-backed keys."
+    </div>
+    <div class="handoff-box">
+      <strong>Verbal Handoff to Speaker 2:</strong> "Now, to unpack the mathematical core that powers core-shared, I'll hand the mic to our Cryptographic & Protocol Engineer, <strong>[Speaker 2 Name]</strong>."
+    </div>
+  </div>
+</div>
+
+<!-- PART 2 -->
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 6</span>
+      <h3 class="slide-title">Section Divider: Cryptographic Foundation & Wire Protocol</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-2">Speaker 2</span>
+      <span class="time-badge">0:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Section divider for Part 2 with 3 bullets highlighting algorithms, nonces, and codec.</div>
+    <div class="speech-script">
+      "Thank you, <strong>[Speaker 1 Name]</strong>.<br><br>
+      In Part 2, we will look under the hood at the mathematical algorithms, key derivation schemes, and custom binary framing that secure every byte transmitted across Tetherless."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 7</span>
+      <h3 class="slide-title">Cryptographic Primitives & Specifications</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-2">Speaker 2</span>
+      <span class="time-badge">1:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: Cipher Suite & Key Agreement; Right card: Key Derivation & Storage Security.</div>
+    <div class="speech-script">
+      "Our cryptographic architecture relies on standardized, constant-time primitives rather than custom inventions.<br><br>
+      For payload confidentiality and authentication, we use <strong>AES-256-GCM</strong> with a 96-bit nonce and a 128-bit authentication tag, providing authenticated encryption with associated data.<br><br>
+      For session key agreement, we implement <strong>RFC 3526 MODP Group 14 Diffie-Hellman</strong>—a 2048-bit safe prime with generator g=2. By switching to standardized static parameters instead of computing runtime primes, we cut client key generation from over 30 seconds down to under 50 milliseconds. 
+      Crucially, we enforce strict inbound public key validation: we verify that 1 &lt; y &lt; p-1 and y^q mod p == 1, which completely neutralizes small-subgroup confinement attacks.<br><br>
+      For identities, each device generates an <strong>RSA-2048</strong> keypair used to digitally sign handshakes and messages via SHA256withRSA over canonically ordered bytes.<br><br>
+      On key derivation: Session keys are expanded using <strong>HKDF-SHA256</strong>. Notice the bullet on <strong>DH Normalization</strong>: In early testing, we uncovered an intermittent 1-in-256 handshake failure between desktop Java and Android. The culprit was BigInteger leading-zero truncation. We implemented left-padding normalization on the shared secret prior to HKDF extraction, permanently resolving cross-platform interop."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 8</span>
+      <h3 class="slide-title">Deterministic GCM Nonce Construction</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-2">Speaker 2</span>
+      <span class="time-badge">1:10 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card (Nonce Reuse Hazard) in Rose; Right card (Deterministic Nonce) in Green with code buffer highlight: [Direction: 4 bytes] || [Monotonic Counter: 8 bytes].</div>
+    <div class="speech-script">
+      "If there is one cardinal rule in modern symmetric cryptography, it is: <strong>never reuse a nonce under the same key in AES-GCM</strong>. Doing so completely destroys confidentiality via keystream XOR cancellation and allows polynomial forgery of the authentication tag.<br><br>
+      Many implementations rely on random 96-bit nonces, but over long-lived sessions, the Birthday Paradox creates an unacceptable collision risk. Worse, during our early prototyping, we caught a subtle bidirectional trap: if Alice and Bob both start message counters at zero, their very first outgoing messages will collide under the shared key!<br><br>
+      On the right card, you see our solution: a deterministic <strong>12-byte (96-bit) nonce structure</strong>. 
+      We dedicate the first <strong>4 bytes to a Direction identifier</strong> and the trailing <strong>8 bytes to a Monotonic Counter</strong>. 
+      The direction identifier is computed deterministically by comparing both parties' cryptographic Peer IDs lexicographically. The party with the lower alphanumeric ID transmits on 0x00000000, while the higher transmits on 0x00000001.<br><br>
+      Furthermore, we enforce a strict send budget of <strong>100,000 messages per session</strong>. Exceeding this triggers mandatory session rekeying before counter wraparound is even remotely possible. This scheme was empirically tested over 100,000 continuous transmissions with zero duplicate nonces."
+    </div>
+    <div class="stage-dir">Stage Direction: Emphasize the critical danger of GCM nonce reuse; this is a major technical flex for the team.</div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 9</span>
+      <h3 class="slide-title">Binary Wire Codec vs. Native Serialization</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-2">Speaker 2</span>
+      <span class="time-badge">1:10 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card (Java Deserialization Hazard) in Rose; Right card (Binary Frame Codec) in Cyan with framing format.</div>
+    <div class="speech-script">
+      "One of our most critical architectural decisions was the complete elimination of Java native serialization.<br><br>
+      Java's ObjectInputStream.readObject() is notorious for Remote Code Execution vulnerabilities via classpath gadget chains. Furthermore, ObjectOutputStream maintains an internal object table that leaks memory unless manually reset, and untrusted streams can declare multi-gigabyte array allocations, causing immediate remote Denial of Service.<br><br>
+      To permanently close these vectors, we stripped every Serializable interface from our codebase and engineered a custom <strong>Length-Prefixed Binary Frame Codec</strong>.<br><br>
+      Look at the framing specification on the right: Every message starts with a 4-byte length prefix and a 1-byte version header. Most importantly, <strong>we validate strict per-field size caps before allocating buffer memory</strong>. Peer IDs cannot exceed 128 bytes, payloads are capped at 64 kilobytes, signatures at 512 bytes, and the total frame cannot exceed 1 megabyte.<br><br>
+      We subjected this binary codec to automated fuzz testing with over 20,000 random bit-flips and mutations, verifying that malformed frames trigger typed protocol exceptions and never crash the process."
+    </div>
+    <div class="handoff-box">
+      <strong>Verbal Handoff to Speaker 3:</strong> "To show how these cryptographic guarantees map into our comprehensive threat model, I'll pass the mic to our Security Analyst, <strong>[Speaker 3 Name]</strong>."
+    </div>
+  </div>
+</div>
+
+<!-- PART 3 -->
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 10</span>
+      <h3 class="slide-title">Section Divider: Threat Model & Security Controls</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-3">Speaker 3</span>
+      <span class="time-badge">0:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Section divider for Part 3 with 3 key threat matrix overview bullets.</div>
+    <div class="speech-script">
+      "Thank you, <strong>[Speaker 2 Name]</strong>.<br><br>
+      A security system is only as good as the threat model it is measured against. In Part 3, we present our formal attack matrix, our identity verification mechanisms, and an honest account of our threat boundaries."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 11</span>
+      <h3 class="slide-title">Threat Matrix: Attacks T1 through T6</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-3">Speaker 3</span>
+      <span class="time-badge">1:30 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> 6-box matrix detailing Attacks T1 through T6 with color-coded severity accents.</div>
+    <div class="speech-script">
+      "Our security architecture was built to withstand six explicit attack vectors, designated T1 through T6.<br><br>
+      <strong>T1 is Passive Relay Sniffing</strong>: The relay operator taps the wire. Mitigated by AES-256-GCM. We verified this with a live packet tap during our End-to-End Exchange tests, mathematically asserting zero plaintext leakage.<br><br>
+      <strong>T2 is Active Man-in-the-Middle by the Relay</strong>: The relay attempts to inject its own Diffie-Hellman keys during key agreement. Mitigated because every DH parameter is digitally signed with the sender's long-term RSA key, and peer addresses are mathematically bound to the key hash.<br><br>
+      <strong>T3 is Intermediate Network Interception</strong>: Mitigated by our TLS 1.3 transport layer with client-side certificate pinning, protecting packet timing and metadata from external ISPs.<br><br>
+      <strong>T4 is Replay and Packet Reordering</strong>: An adversary captures a valid encrypted frame and replays it later. Mitigated by a monotonic sliding counter window with a floor of highest_seen - 1024, combined with a strict 5-minute timestamp skew rejection.<br><br>
+      <strong>T5 is Malicious Peer Payloads</strong>: Mitigated by the custom binary codec you just saw, enforcing pre-allocation bounds.<br><br>
+      And <strong>T6 is Device Compromise at Rest</strong>: If the device is seized or stolen while powered off, databases are encrypted using SQLCipher on Android and PBKDF2-HMAC-SHA256 on Desktop. Keys are never written to disk in plaintext."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 12</span>
+      <h3 class="slide-title">Identity Architecture: TOFU & Safety Numbers</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-3">Speaker 3</span>
+      <span class="time-badge">1:10 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: Cryptographic Peer Identity; Right card: Trust-on-First-Use & Safety Numbers.</div>
+    <div class="speech-script">
+      "In decentralized systems, how do users verify who they are talking to without a central certificate authority?<br><br>
+      In Tetherless, identity is mathematical. A <strong>Peer ID</strong> is strictly the first 16 bytes of the SHA-256 hash of the user's public key, rendered as 32 hexadecimal characters. It is immutable. Display names are treated as untrusted metadata and sanitized of bidirectional Unicode overrides to prevent visual spoofing.<br><br>
+      When two users first connect, we implement <strong>Trust-on-First-Use (TOFU)</strong>. The first public key received for a peer is permanently pinned in the local database. If an active relay or attacker attempts to swap that key in a subsequent session, the client hard-blocks communication and flashes a red KEY_CHANGED warning banner.<br><br>
+      To defeat MITM attacks even on the first contact, we generate <strong>Safety Numbers</strong>: 12 groups of 5 decimal digits computed over both public keys sorted lexicographically: SHA-256(min(KA, KB) || max(KA, KB)). Because of this sorting, both Alice and Bob compute the exact same digits. They can compare them out-of-band over a phone call or in person to verify absolute cryptographic authenticity."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 13</span>
+      <h3 class="slide-title">Transparent Security Limitations</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-3">Speaker 3</span>
+      <span class="time-badge">0:45 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card (Architectural Non-Guarantees) in Amber; Right card (Cryptographic Scope Boundaries) in Rose.</div>
+    <div class="speech-script">
+      "No security review is complete without discussing limitations. We believe in total transparency regarding what Tetherless v1.0 does and does not protect against.<br><br>
+      On the left: <strong>Relay metadata observation</strong>. The relay sees the social graph: who connects, message frequency, and packet lengths. We do not yet implement dummy traffic padding. Furthermore, a single central relay is a single point of failure for availability until we federate.<br><br>
+      On the right: <strong>Forward secrecy scope</strong>. Session keys are ephemeral, but forward secrecy is bound by session volume—up to 100,000 messages—rather than per-message ratchet steps. Double Ratchet is slated for post-1.0. 
+      Finally, at-rest encryption protects cold data, but an active compromise of live process memory on an unlocked device is outside our threat model."
+    </div>
+    <div class="handoff-box">
+      <strong>Verbal Handoff to Speaker 4:</strong> "Now, let's examine how the relay server handles high throughput while maintaining this zero-knowledge boundary. I'll hand over to <strong>[Speaker 4 Name]</strong>."
+    </div>
+  </div>
+</div>
+
+<!-- PART 4 & DESKTOP -->
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 14</span>
+      <h3 class="slide-title">Section Divider: Relay Server Architecture & Hardening</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-4">Speaker 4</span>
+      <span class="time-badge">0:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Section divider for Part 4 with 3 relay engineering bullets.</div>
+    <div class="speech-script">
+      "Thank you, <strong>[Speaker 3 Name]</strong>.<br><br>
+      In Part 4, we examine the relay server architecture—how we built a high-throughput, non-blocking routing engine that is deliberately dumb and hardened for production deployment."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 15</span>
+      <h3 class="slide-title">Dumb Relay: Non-Blocking Ciphertext Routing</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-4">Speaker 4</span>
+      <span class="time-badge">1:25 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: Non-Blocking Per-Client Writer Queues; Right card: Concurrency & Connection Lifecycle.</div>
+    <div class="speech-script">
+      "The primary engineering challenge in a real-time relay is preventing slow or malicious clients from degrading the system for everyone else.<br><br>
+      In Tetherless, we implement a <strong>dedicated non-blocking writer queue pattern</strong>. 
+      Each connected client session maintains an in-memory ArrayBlockingQueue&lt;byte[]&gt; with a capacity of 256 frames, serviced by its own background writer thread.
+      When a message arrives, the inbound socket handler parses only the 4-byte length and receiver ID, deposits the raw ciphertext frame into the recipient's queue, and returns immediately.<br><br>
+      This achieves <strong>zero head-of-line blocking</strong>: A slow cellular client on high packet loss cannot stall the sender or consume shared server threads. If a client queue fills to capacity, the server closes the offending connection with an ERROR frame rather than deadlocking.<br><br>
+      On the right card, look at our connection lifecycle handling:
+      In mobile networks, devices disconnect and reconnect frequently. To prevent race conditions where a dying socket evicts a newly established socket, our ClientRegistry uses atomic Compare-And-Swap operations: remove(clientId, thisSession).
+      We maintain a 30-second heartbeat PING interval and a strict 90-second socket read timeout, ensuring abandoned half-open TCP connections are reaped immediately.
+      We stress-tested this engine with 10 concurrent senders blasting 1,000 messages simultaneously to a single recipient—10,000 messages delivered with zero loss and zero reordering."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 16</span>
+      <h3 class="slide-title">Operational Hardening & Release Gating</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-4">Speaker 4</span>
+      <span class="time-badge">1:10 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card (Release Gate Enforcement) in Amber; Right card (Container Sandboxing) in Green.</div>
+    <div class="speech-script">
+      "Engineering secure code is futile if operational deployment is sloppy.<br><br>
+      In development, we use a self-signed keystore for local testing. In many commercial breaches, developers accidentally ship these development credentials to production. 
+      In Tetherless, we solved this with an <strong>enforced -PreleaseBuild Gradle release gate</strong>. When building a production distribution, the build system physically strips dev-keystore.p12 from the JAR and Docker image. The server binary literally refuses to start unless an external, production keystore is supplied.
+      To prevent secrets from appearing in process listings or docker inspect, passwords can be mounted via KEYSTORE_PASSWORD_FILE.<br><br>
+      For containerization, our Docker image runs as an unprivileged user—tetherless:tetherless—with a <strong>read-only root filesystem and ALL Linux capabilities dropped</strong>.
+      Finally, Prometheus metrics on port + 1 are strictly bound to loopback 127.0.0.1, guaranteeing unauthenticated operational telemetry is never exposed to the public internet."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 17</span>
+      <h3 class="slide-title">Section Divider: Client Implementations: Desktop & Mobile</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-4">Speaker 4</span>
+      <span class="time-badge">0:15 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Section divider for Part 5 with 3 client overview bullets.</div>
+    <div class="speech-script">
+      "Now let's move into Part 5 and examine how these server and protocol contracts are realized across our client applications, starting with the Desktop client."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 18</span>
+      <h3 class="slide-title">Desktop Client Architecture (chat-desktop)</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-4">Speaker 4</span>
+      <span class="time-badge">1:05 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: UI & Threading Model; Right card: Persistence & Packaging.</div>
+    <div class="speech-script">
+      "The desktop client is built with Java Swing, but engineered to modern responsive standards.<br><br>
+      First, <strong>strict Event Dispatch Thread (EDT) decoupling</strong>. All network sockets, cryptographic calculations, and database reads run on background worker pools. UI components receive updates exclusively through SwingUtilities.invokeLater, ensuring a silky-smooth, freeze-free user interface.
+      Our ConnectionManager executes an exponential backoff state machine with full jitter, gracefully recovering from network drops between 1 and 60 seconds.
+      We also eliminated a legacy security flaw: identity key generation now occurs 100% in-process via JCE, rather than shelling out to the CLI keytool which leaked passphrases in the OS process table.<br><br>
+      For persistence, we use SQLite configured in <strong>WAL (Write-Ahead Logging) mode</strong> with a single-writer connection, preventing database lock contention under rapid messaging. Message history is encrypted at rest using PBKDF2-derived keys.<br><br>
+      And for deployment, we package the desktop app via jpackage into a self-contained Windows .msi that bundles a trimmed modular JRE—users can install and run Tetherless without having Java installed on their machine!"
+    </div>
+    <div class="handoff-box">
+      <strong>Verbal Handoff to Speaker 5:</strong> "Now, to present our Android architecture, our update strategy, and our verification suite, I'll pass the mic to <strong>[Speaker 5 Name]</strong>."
+    </div>
+  </div>
+</div>
+
+<!-- PART 5 & 6 -->
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 19</span>
+      <h3 class="slide-title">Mobile Client Architecture (chat-mobile)</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-5">Speaker 5</span>
+      <span class="time-badge">1:10 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: Android Architecture & Storage; Right card: Service Lifecycle & Core Shared Engine.</div>
+    <div class="speech-script">
+      "Thank you, <strong>[Speaker 4 Name]</strong>.<br><br>
+      On mobile, our design mandate was two-fold: deliver modern reactive Android architecture, and maximize hardware-level cryptographic isolation.<br><br>
+      On the left: The app is built on Google's modern Jetpack stack—Room ORM, ViewModels, LiveData reactive streams, and ListAdapter with DiffUtil. 
+      Unlike desktop column encryption, <strong>Android uses SQLCipher for whole-file database encryption</strong>. Every table, participant record, and timestamp is encrypted before hitting flash storage. 
+      Crucially, the 256-bit database key is wrapped using AES-GCM and stored inside the <strong>hardware-backed AndroidKeyStore</strong>. The raw key exists only in transient memory and is zeroed out on teardown.<br><br>
+      On the right: Mobile OSs aggressively kill background sockets. We implemented a persistent <strong>Foreground ChatService</strong> with a low-priority notification, allowing the connection to survive Android Doze mode and memory reclamation.
+      Notice that both Desktop and Mobile delegate all crypto and wire handling to core-shared—giving us 100% business logic parity across platforms."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 20</span>
+      <h3 class="slide-title">Update Delivery & Maintenance Strategy</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-5">Speaker 5</span>
+      <span class="time-badge">0:50 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: Update Checker Architecture (CLIENT-DESKTOP-08); Right card: Security & Privacy Policy.</div>
+    <div class="speech-script">
+      "Maintaining desktop software requires an update notification pipeline that respects user privacy.<br><br>
+      Under ticket <strong>CLIENT-DESKTOP-08</strong>, our desktop client queries the GitHub Releases API asynchronously on startup, comparing the latest release tag against BuildInfo.version stamped during CI.
+      If an update is found, it presents a clean, non-intrusive banner in the chat window with a link to download the new installer. If the network is down or rate limits hit, it fails completely silently.<br><br>
+      Notice our privacy policies on the right:
+      <strong>We refuse to auto-execute downloaded binaries</strong>. Since the pre-1.0 MVP is not yet signed with a commercial EV certificate, auto-executing code is dangerous. 
+      Furthermore, the update check transmits <strong>zero user telemetry, zero device IDs, and zero metadata</strong>, and privacy-conscious users can completely disable update checks with a single configuration flag."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 21</span>
+      <h3 class="slide-title">Section Divider: Verification, Testing & Production Roadmap</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-5">Speaker 5</span>
+      <span class="time-badge">0:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Section divider for Part 6 with 3 testing and roadmap bullets.</div>
+    <div class="speech-script">
+      "Now we enter our final section: Part 6. Here we move from architecture on paper to empirical proof: our automated adversarial attack suites, our static analysis gates, and our roadmap to shipping v1.0."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 22</span>
+      <h3 class="slide-title">Verification Suite & Adversarial Testing</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-5">Speaker 5</span>
+      <span class="time-badge">1:20 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: AdversarialRelayTest (13 Attack Scenarios) in Rose; Right card: End-to-End & Golden Conformance in Green.</div>
+    <div class="speech-script">
+      "We do not assume our security works; we attack our own code in automated test suites.<br><br>
+      On the left is our primary adversarial test: <strong>AdversarialRelayTest</strong>, which injects 13 real-world active attacks:<br>
+      When a malicious relay attempts key substitution during the DH handshake, the handshake aborts immediately.<br>
+      When an attacker substitutes the public key in a HELLO frame, it is rejected because the Peer ID does not match the key hash.<br>
+      When we flip a single bit in the ciphertext payload, GCM authentication tag verification fails and the frame is dropped.<br>
+      When a captured frame is replayed, the sliding counter window flags it as a duplicate and discards it.<br><br>
+      On the right, look at <strong>EndToEndExchangeTest</strong>: We spin up a real relay and two live clients, attach an external network wire tap, and transmit 200 real messages. The test asserts mathematically that not a single substring of plaintext ever appears on the wire.
+      We also validate <strong>17 frozen golden wire vectors</strong> across both the JVM and Android emulator to guarantee zero codec divergence, and our static analysis gate runs SpotBugs with find-sec-bugs with <strong>zero high-severity warnings</strong>."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 23</span>
+      <h3 class="slide-title">MVP Delivery Roadmap: Remaining Tickets</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-5">Speaker 5</span>
+      <span class="time-badge">1:10 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> 6-ticket backlog matrix detailing CLIENT-DESKTOP-07 through REL-03 & INTEG-04.</div>
+    <div class="speech-script">
+      "Here is our exact sprint backlog leading directly to the production Server and Windows Desktop MVP release:<br><br>
+      1. <strong>CLIENT-DESKTOP-07 (Currently Active)</strong>: Expanding desktop unit test coverage across the repository, connection manager, and cryptographic pipelines.<br>
+      2. <strong>INTEG-01</strong>: A headless automated multi-client integration test harness validating live message routing.<br>
+      3. <strong>BUILD-04</strong>: Our GitHub Actions CI pipeline running clean multi-platform builds, SpotBugs, unit tests, and integration suites on every commit.<br>
+      4. <strong>REL-01</strong>: Formal security audit, log scrubbing review to ensure zero key leakage, and publication of our threat model in docs/security.md.<br>
+      5. <strong>CLIENT-DESKTOP-08</strong>: The in-app update notification banner we discussed earlier.<br>
+      6. And <strong>REL-03 & INTEG-04</strong>: Final manual QA matrix execution on Windows 10 and 11, accompanied by our complete deployment documentation overhaul."
+    </div>
+    <div class="handoff-box">
+      <strong>Verbal Handoff to Speaker 1:</strong> "To close out our presentation and share our future architectural horizons, I will pass the floor back to our Lead Architect, <strong>[Speaker 1 Name]</strong>."
+    </div>
+  </div>
+</div>
+
+<!-- PART 6 / CONCLUSION -->
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 24</span>
+      <h3 class="slide-title">Future Architectural Horizons (Post-v1.0)</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-1">Speaker 1</span>
+      <span class="time-badge">1:00 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Left card: Cryptographic Upgrades (Double Ratchet, Curve25519); Right card: Decentralization & Topology (Federation, MLS).</div>
+    <div class="speech-script">
+      "Thank you, <strong>[Speaker 5 Name]</strong>.<br><br>
+      Once our v1.0 MVP is deployed to production, our architectural roadmap expands in two exciting dimensions.<br><br>
+      In cryptography: Ticket <strong>FUTURE-01</strong> introduces Signal's <strong>Double Ratchet protocol</strong>, evolving our session-bound forward secrecy into per-message forward secrecy with post-compromise self-healing. 
+      Under <strong>FUTURE-02</strong>, we will transition from classical DH-2048 and RSA-2048 to <strong>Curve25519</strong>—using X25519 for key exchange and Ed25519 for signatures—slashing handshake sizes and accelerating mobile battery efficiency.<br><br>
+      In network topology: Ticket <strong>FUTURE-04</strong> will transition Tetherless from a single relay into a <strong>federated, peer-to-peer network</strong> using DHT-based peer discovery, eliminating the single relay as an availability bottleneck. 
+      And <strong>FUTURE-05</strong> will bring decentralized group messaging through the <strong>Messaging Layer Security (MLS)</strong> standard.<br><br>
+      Tetherless v1.0 is engineered specifically so that these future protocols can be dropped into core-shared without rewriting client UI or persistence layers."
+    </div>
+  </div>
+</div>
+
+<div class="slide-card">
+  <div class="slide-header">
+    <div class="slide-title-group">
+      <span class="slide-num">SLIDE 25</span>
+      <h3 class="slide-title">Project Summary & Conclusion</h3>
+    </div>
+    <div class="slide-meta">
+      <span class="spk-badge spk-1">Speaker 1</span>
+      <span class="time-badge">1:00 min</span>
+    </div>
+  </div>
+  <div class="slide-body">
+    <div class="visual-cue"><strong>Visual on Screen:</strong> Full-width summary card: 5 Key Takeaways & Production Readiness.</div>
+    <div class="speech-script">
+      "To summarize what we have achieved with Tetherless:<br><br>
+      1. <strong>An uncompromising security core</strong>: AES-256-GCM authenticated encryption, signed Diffie-Hellman, deterministic nonces, and a custom binary frame codec that permanently eliminates Java deserialization RCE.<br>
+      2. <strong>A provable zero-knowledge relay</strong>: Validated by automated wire taps proving zero plaintext ever touches intermediate servers.<br>
+      3. <strong>Cross-platform parity</strong>: A shared cryptographic engine guaranteeing flawless interop between Windows Desktop and Android.<br>
+      4. <strong>Production-hardened operations</strong>: Docker sandboxing with dropped capabilities, loopback telemetry, and release gates that prevent shipping development certificates.<br>
+      5. <strong>A clear, actionable path to MVP</strong>: A prioritized ticket backlog delivering a shippable, pre-1.0 verified product.<br><br>
+      On behalf of our entire engineering team—<strong>[Speaker 2]</strong>, <strong>[Speaker 3]</strong>, <strong>[Speaker 4]</strong>, <strong>[Speaker 5]</strong>, and myself—thank you for your time. 
+      We would now be delighted to answer any questions."
+    </div>
+    <div class="stage-dir">Stage Direction: Step back into alignment with the entire team. Open arms warmly to invite audience questions.</div>
+  </div>
+</div>
+
+<!-- SECTION 3: QA DEFENSE (PAGE BREAK FOR CLEAN PRINTING) -->
+<div class="page-break"></div>
+
+<div class="section-title">
+  3. Team Q&A Defense Strategy & Question Routing
+  <span>Speaker 1 Moderates & Dispatches to Specialists</span>
+</div>
+
+<table class="qa-table">
+  <thead>
+    <tr>
+      <th style="width: 24%;">Question Category</th>
+      <th style="width: 13%;">Primary</th>
+      <th style="width: 10%;">Backup</th>
+      <th>Key Technical Talking Point</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Why not use Double Ratchet in v1.0?</strong></td>
+      <td><span class="spk-badge spk-2">Speaker 2</span></td>
+      <td>Speaker 1</td>
+      <td>"Double Ratchet introduces significant out-of-order ratchet state and key management overhead. For v1.0 direct messaging, RFC 3526 DH-2048 with a 100,000-message session budget provides rigorous forward secrecy while keeping the state machine verifiable and stable. Double Ratchet is queued as FUTURE-01."</td>
+    </tr>
+    <tr>
+      <td><strong>Why raw TCP sockets instead of WebSockets or gRPC?</strong></td>
+      <td><span class="spk-badge spk-4">Speaker 4</span></td>
+      <td>Speaker 2</td>
+      <td>"WebSockets and gRPC introduce extensive HTTP/2 framing, framing headers, and third-party library dependencies. Raw TCP sockets with our length-prefixed binary codec give us minimal binary overhead, zero external framework CVE surfaces, and absolute control over memory allocation bounds."</td>
+    </tr>
+    <tr>
+      <td><strong>What prevents an active relay from dropping or altering messages?</strong></td>
+      <td><span class="spk-badge spk-3">Speaker 3</span></td>
+      <td>Speaker 5</td>
+      <td>"If the relay alters even one bit of ciphertext, GCM authentication tag verification fails instantly and the message is discarded. If the relay drops frames, the recipient notices counter gaps or timeout disconnects. While a relay can deny service, it can never tamper without detection."</td>
+    </tr>
+    <tr>
+      <td><strong>How does the relay scale with thousands of slow connections?</strong></td>
+      <td><span class="spk-badge spk-4">Speaker 4</span></td>
+      <td>Speaker 1</td>
+      <td>"Our dedicated ArrayBlockingQueue&lt;byte[]&gt; pattern ensures that a slow or lagging client only fills its own 256-frame queue. Inbound worker threads deposit frames and return in sub-millisecond time. If a client queue overflows, only that slow client connection is terminated—zero head-of-line blocking."</td>
+    </tr>
+    <tr>
+      <td><strong>How do you ensure Android and Desktop cryptography stay in sync?</strong></td>
+      <td><span class="spk-badge spk-5">Speaker 5</span></td>
+      <td>Speaker 2</td>
+      <td>"Both applications import the exact same core-shared library compiled to Java 8 bytecode. Furthermore, our CI runs ProtocolVectors containing 17 frozen wire-format vectors across both the JVM and an Android emulator to assert byte-for-byte serialization parity."</td>
+    </tr>
+    <tr>
+      <td><strong>How does the binary codec prevent Remote Code Execution?</strong></td>
+      <td><span class="spk-badge spk-2">Speaker 2</span></td>
+      <td>Speaker 4</td>
+      <td>"All classes stripped of Serializable. We use explicit length-prefixed DataInputStream/DataOutputStream decoding. Per-field caps (IDs &le; 128B, Payload &le; 64KB, Sig &le; 512B) are checked before allocating heap memory, completely closing gadget chain deserialization."</td>
+    </tr>
+    <tr>
+      <td><strong>How are identities verified without a central CA?</strong></td>
+      <td><span class="spk-badge spk-3">Speaker 3</span></td>
+      <td>Speaker 2</td>
+      <td>"Identity is cryptographic: Peer ID is SHA-256(PublicKey)[0..16]. Handshakes are digitally signed with RSA-2048. Trust-on-First-Use pins keys locally; subsequent changes trigger KEY_CHANGED alerts. Symmetric 60-digit safety numbers enable out-of-band cross-verification."</td>
+    </tr>
+    <tr>
+      <td><strong>What prevents accidental deployment with development certificates?</strong></td>
+      <td><span class="spk-badge spk-4">Speaker 4</span></td>
+      <td>Speaker 5</td>
+      <td>"The Gradle -PreleaseBuild gate physically removes dev-keystore.p12 from the build output. The server binary checks keystore existence on boot and aborts immediately if dev certificates are detected."</td>
+    </tr>
+    <tr>
+      <td><strong>How is message history protected if a phone is stolen?</strong></td>
+      <td><span class="spk-badge spk-5">Speaker 5</span></td>
+      <td>Speaker 3</td>
+      <td>"On Android, SQLCipher encrypts the entire SQLite file at rest. The 256-bit database key is wrapped using hardware-backed AndroidKeyStore (AES-GCM). Raw keys exist only in transient RAM and cannot be exported or backed up."</td>
+    </tr>
+    <tr>
+      <td><strong>What is the long-term plan for decentralization?</strong></td>
+      <td><span class="spk-badge spk-1">Speaker 1</span></td>
+      <td>Speaker 4</td>
+      <td>"Post-v1.0 tickets FUTURE-04 and FUTURE-05 federate relays and introduce DHT-based peer discovery. Because core-shared encapsulates the session state machine, we can switch routing layers without modifying UI or storage code."</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="section-title">
+  4. Team Rehearsal & Execution Checklist
+  <span>5 Ground Rules for Presentation Day</span>
+</div>
+
+<ul class="checklist">
+  <li><strong>1. Strict Handoff Cadence:</strong> Memorize your 1-sentence handoff and pickup lines. Never leave dead air between speakers.</li>
+  <li><strong>2. Stage Positioning:</strong> Stand in sequence: [Speaker 1] [Speaker 2] [Speaker 3] [Speaker 4] [Speaker 5]. Step forward when speaking; step back when handing off.</li>
+  <li><strong>3. Coordinated Slide Clicks:</strong> Speaker 1 (or designated clicker) advances slides using the verbal cue markers indicated in the script.</li>
+  <li><strong>4. Physical Gestures:</strong> Actively point to the left/right slide cards and visual diagrams when speaking about them (e.g., the 12-byte nonce buffer, the threat matrix).</li>
+  <li><strong>5. Q&A Discipline:</strong> Speaker 1 acknowledges questions and delegates to the primary specialist. Never talk over each other during evaluation questions.</li>
+</ul>
+
+</body>
+</html>
+"""
+
+def generate_pdf(output_html_path, output_pdf_path):
+    print(f"Writing HTML source to {output_html_path}...")
+    with open(output_html_path, "w", encoding="utf-8") as f:
+        f.write(HTML_CONTENT)
+
+    edge_paths = [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ]
+    edge_bin = None
+    for p in edge_paths:
+        if os.path.exists(p):
+            edge_bin = p
+            break
+
+    if not edge_bin:
+        print("Error: Microsoft Edge not found.")
+        sys.exit(1)
+
+    print(f"Converting HTML to PDF via headless Edge: {edge_bin}...")
+    args = [
+        edge_bin,
+        "--headless",
+        "--disable-gpu",
+        "--no-pdf-header-footer",
+        f"--print-to-pdf={output_pdf_path}",
+        output_html_path,
+    ]
+    res = subprocess.run(args, capture_output=True, text=True)
+    if os.path.exists(output_pdf_path) and os.path.getsize(output_pdf_path) > 0:
+        print(f"Successfully generated PDF: {output_pdf_path} ({os.path.getsize(output_pdf_path):,} bytes)")
+    else:
+        print(f"Failed to generate PDF. Exit code: {res.returncode}")
+        print("Stdout:", res.stdout)
+        print("Stderr:", res.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docs"))
+    html_file = os.path.join(base_dir, "speech_deck_5_person.html")
+    pdf_file = os.path.join(base_dir, "speech_deck_5_person.pdf")
+    generate_pdf(html_file, pdf_file)
