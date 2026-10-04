@@ -3,7 +3,6 @@ package com.e2eechat.core.crypto;
 import org.junit.Test;
 
 import javax.crypto.KeyAgreement;
-import javax.crypto.interfaces.DHPublicKey;
 import java.security.KeyPair;
 import java.util.Arrays;
 
